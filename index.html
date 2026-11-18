@@ -216,6 +216,7 @@ body.kiosk #bar,body.kiosk #chat,body.kiosk #chatBtn,body.kiosk #hud,body.kiosk 
 · 바깥: 노천탕 · 폭포탕 · 히노키탕 · 탄산탕 · 🍊귤탕(이벤트), 세신 코너, 노지감귤상, 담장 너머 큰 폭포<br>
 · 매점은 바깥 왼편과 찜질방에 있어요. 팔찌로 태그하면 나갈 때 계산!<br>
 · 🍊귤탕에서 귤을 직접 까먹을 수 있어요 (껍질 → 귤락 → 반 가르기 → 한 조각씩). 귤탕은 같은 탕방 사람들과 함께 써요 — 귤이 다 떨어지면 농부 이상민이 채워줘요<br>
+· 🐴 농부 이상민이 가끔(10분에 3분쯤) 말을 타고 바깥을 순찰해요<br>
 · 같은 주소로 들어온 사람들과 한 탕방에 모여요 (방당 최대 12명)</div>
 <div id="bar">
   <button class="btn" id="ahBtn">♨ 좋다~!</button>
@@ -1354,6 +1355,25 @@ function updMandarins(dt){const clk=Date.now()/1000;mandarins.forEach((m,i)=>{
   if(f>=1){m.fly=null;m.g.rotation.x=0;const [v]=hearFrom(m.g.position.x,m.g.position.z,30);if(v>0&&Math.random()<.5)bloop(.08*v,true);}return;}
  m.active=isAvail(i);if(!m.active){m.g.visible=false;return;}
  m.g.visible=true;const a=m.a0+m.sp*clk;m.g.position.set(juiceP.x+Math.cos(a)*m.r,.09+Math.sin(TT*1.3+m.ph)*.02,juiceP.z+Math.sin(a)*m.r);m.g.rotation.y+=dt*.2;});}
+// ---- 🐴 이상민 순찰: 10분마다 3분(30%) 말 타고 바깥을 돈다. 공통 시계로 계산해서 모두에게 같은 자리에 보임. 귤 배달(FARM) 중에는 배달이 우선 ----
+const ROAM={cycle:600,win:180,off:137,laps:5,vis:false,clop:0,ch:false,sayK:-1,x:0,z:0};
+const R_IN=[[40,-20.6],[27,-20.6],[27,-15],[11.2,-15],[9.6,-18.5]],R_LOOP=[[-9,-18.5],[-9,6],[9.6,6],[9.6,-18.5]]; // 탕·석등·정자 기둥을 피하는 길
+const R_PTS=(()=>{const p=R_IN.slice();for(let k=0;k<ROAM.laps;k++)p.push(...R_LOOP);p.push(...R_IN.slice(0,-1).reverse());return p;})();
+const R_PATH=(()=>{const segs=[];let L=0;for(let i=0;i<R_PTS.length-1;i++){const a=R_PTS[i],b=R_PTS[i+1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,l,s:L});L+=l;}return {segs,L,inEnd:segs[R_IN.length-2].s+segs[R_IN.length-2].l};})();
+const R_SAY=['다들 잘 담그고 계시죠~?','순찰 중입니다~','귤 모자라면 불러요~','히이잉~','오늘 물 좋네!','미끄러우니 뛰지 마세요~'];
+function roamAt(d){for(const s of R_PATH.segs)if(d<=s.s+s.l){const f=(d-s.s)/(s.l||1);return [s.a[0]+(s.b[0]-s.a[0])*f,s.a[1]+(s.b[1]-s.a[1])*f,Math.atan2(s.b[0]-s.a[0],s.b[1]-s.a[1])];}const l=R_PTS[R_PTS.length-1];return [l[0],l[1],0];}
+function roamPhase(){return ((Date.now()/1000+ROAM.off)%ROAM.cycle+ROAM.cycle)%ROAM.cycle;}
+function roamFrame(dt){
+ if(FARM.active){if(ROAM.vis){ROAM.vis=false;sparkleAt(ROAM.x,1.5,ROAM.z);}return;}
+ const ph=roamPhase();
+ if(ph>=ROAM.win){if(ROAM.vis){ROAM.vis=false;farmer.visible=false;}return;}
+ const d=ph/ROAM.win*R_PATH.L;const [x,z,yaw]=roamAt(d);ROAM.x=x;ROAM.z=z;
+ if(!ROAM.vis){ROAM.vis=true;farmer.visible=true;basketFruit.visible=true;basket.rotation.x=0;horseRoot.rotation.x=0;farmer.rotation.y=yaw;if(d>R_PATH.inEnd&&d<R_PATH.L-R_PATH.inEnd)sparkleAt(x,1.5,z);}
+ farmer.position.set(x,0,z);farmer.rotation.y=angLerp(farmer.rotation.y,yaw,Math.min(1,dt*4));
+ hLegs.forEach((l,i)=>{l.rotation.x=Math.sin(ph*9+(i<2?0:Math.PI)+(i%2)*.6)*.5;});horse.position.y=Math.abs(Math.sin(ph*9))*.06;
+ ROAM.clop-=dt;if(ROAM.clop<0){ROAM.clop=.2;ROAM.ch=!ROAM.ch;const [v]=hearFrom(x,z,30);if(v>0)clopSnd(ROAM.ch,v*.8);}
+ const k=Math.floor(ph/24);if(k!==ROAM.sayK){const first=ROAM.sayK<0;ROAM.sayK=k;if(!first&&k>0&&ph<ROAM.win-14){const w=R_SAY[k%R_SAY.length];bubbleAt(x,3.1,z,w);if(w==='히이잉~'){const [v,pn]=hearFrom(x,z);if(v>0)neighSnd(.18*v,pn);}}}
+}
 function farmFrame(dt,now){
  const left=mandarins.some((m,i)=>isAvail(i)||m.fly);const wall=Date.now();
  if(!left&&!JZ.farmAt&&!FARM.active&&amLeader()){JZ.farmAt=wall+15000;jzSend({t:'farm',at:JZ.farmAt});}
@@ -1648,7 +1668,7 @@ function frame(now){
  for(let k=0;k<14;k++){const i=(Math.random()*BN)|0;const [x,z]=randInPool(tp);bPos[i*3]=x;bPos[i*3+2]=z;}
  for(let i=0;i<BN;i++)bPos[i*3+1]=.07+Math.abs(Math.sin(TT*6+i))*.03;
  bGeo.attributes.position.needsUpdate=true;
- updMandarins(dt);farmFrame(dt,now);if(peelOpen)peelTick(dt);
+ updMandarins(dt);farmFrame(dt,now);roamFrame(dt);if(peelOpen)peelTick(dt);
  fans.forEach(f=>{f.blades.rotation.z-=dt*22;f.head.rotation.y=Math.sin(TT*.5+f.ph)*.8;});
  chimes.forEach((c,i)=>{c.rotation.z=Math.sin(TT*1.3+i)*.08;c.rotation.x=Math.sin(TT*.9+i*2)*.05;});
  snow.visible=snowOn&&outdoor;
