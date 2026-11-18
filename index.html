@@ -189,10 +189,13 @@ body.kiosk #bar,body.kiosk #chat,body.kiosk #chatBtn,body.kiosk #hud,body.kiosk 
 #subtitle{white-space:normal;width:max-content;max-width:90vw;text-align:center;font-size:15px}
 #upd{top:auto;bottom:150px;font-size:12px}
 }
+#fpsBox{position:fixed;left:50%;top:4px;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#9f9;font:11px ui-monospace,monospace;padding:3px 8px;border-radius:6px;z-index:30;pointer-events:none;white-space:nowrap}
+#vign{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(20,10,30,.28) 100%);z-index:1}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="vign"></div>
 <svg width="0" height="0" style="position:absolute"><filter id="heat" x="0" y="0" width="100%" height="100%"><feTurbulence id="heatT" type="fractalNoise" baseFrequency="0.008 0.03" numOctaves="2" seed="1"/><feDisplacementMap in="SourceGraphic" scale="18" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
 <div id="soak" class="ov"></div>
 <div id="steamOv" class="ov"></div>
@@ -430,7 +433,8 @@ const softTex=canvasTex(128,128,(g)=>{const gr=g.createRadialGradient(64,64,0,64
 const dotTex=canvasTex(32,32,(g)=>{const gr=g.createRadialGradient(16,16,0,16,16,16);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,32,32);});
 const steam=[];
 function randInPool(p){if(p.type==='circle'){const a=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*p.r*.9;return [p.x+Math.cos(a)*r,p.z+Math.sin(a)*r];}return [p.x+rnd(-p.w/2,p.w/2)*.9,p.z+rnd(-p.d/2,p.d/2)*.9];}
-function mkSprite(){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:softTex,transparent:true,depthWrite:false,opacity:0}));scene.add(s);return s;}
+const SB={list:[],mesh:null}; // 김 스프라이트 묶음 (그리기는 performance 구역의 sbBuild/sbUpdate)
+function mkSprite(){const s={position:new THREE.Vector3(0,-999,0),scale:{v:1,setScalar(x){this.v=x;}},material:{opacity:0,color:{v:1,setScalar(x){this.v=x;}}}};SB.list.push(s);return s;}
 pools.forEach(p=>{const n=p.name==='노천탕'?34:16;for(let i=0;i<n;i++){const [x,z]=randInPool(p);steam.push({s:mkSprite(),p,life:Math.random(),sp:rnd(.08,.16),x,z,drift:rnd(-.3,.3),kind:0});}});
 for(let i=0;i<10;i++)steam.push({s:mkSprite(),life:Math.random(),sp:rnd(.5,.8),x:wfPos.x+rnd(-.8,.8),z:wfPos.z+.6,drift:rnd(-.5,.5),kind:1});
 for(let i=0;i<18;i++)steam.push({s:mkSprite(),life:Math.random(),sp:rnd(.15,.3),x:BIG.x+rnd(-4,4),z:-76+rnd(-1,2),drift:rnd(-1.5,1.5),kind:2});
@@ -1644,7 +1648,7 @@ function frame(now){
   else if(o.kind===2){o.s.position.set(o.x+o.drift*L*3,1+L*9,o.z+L*3);o.s.scale.setScalar(5+L*10);o.s.material.opacity=Math.sin(L*Math.PI)*.28;}
   else if(o.kind===3){o.s.position.set(o.x+o.drift*L,Y1+.3+L*2.5,o.z);o.s.scale.setScalar(1.4+L*2.4);o.s.material.opacity=Math.sin(L*Math.PI)*.4;o.s.material.color.setScalar(1);return;}
   else{o.s.position.set(o.x+o.drift*L+Math.sin(TT*.5+o.x)*.2*L,.15+L*2.6,o.z+Math.cos(TT*.4+o.z)*.2*L);o.s.scale.setScalar(1.1+L*2.6);o.s.material.opacity=Math.sin(L*Math.PI)*.2*sf;}
-  o.s.material.color.setScalar(.5+.5*shared.lite.value);});
+  o.s.material.color.setScalar(.5+.5*shared.lite.value);});sbUpdate();
  for(let k=0;k<14;k++){const i=(Math.random()*BN)|0;const [x,z]=randInPool(tp);bPos[i*3]=x;bPos[i*3+2]=z;}
  for(let i=0;i<BN;i++)bPos[i*3+1]=.07+Math.abs(Math.sin(TT*6+i))*.03;
  bGeo.attributes.position.needsUpdate=true;
@@ -1708,8 +1712,53 @@ function frame(now){
   $('place').textContent=pl;$('sub').textContent=sb;
   const hh=kstHour();$('timeBtn').textContent=modeI===0?`🕐 실시간 ${String(Math.floor(hh)).padStart(2,'0')}:${String(Math.floor((hh%1)*60)).padStart(2,'0')}`:`🕐 ${modes[modeI][1]}`;
  }
- renderer.render(scene,camera);
+ renderer.render(scene,camera);perfFrame(dt);
 }
+// ================= performance =================
+// (1) 움직이지 않는 메시를 재질별로 합쳐 draw call을 줄인다: scene 바로 아래 건물·소품, 가만히 있는 손님 아바타, 걷는 NPC의 몸통(팔다리 제외).
+//     원본은 장면에서만 빠지고 blockers(카메라 충돌)에는 그대로 남는다. 나중에 움직일 메시는 userData.dyn=1로 표시하면 제외된다.
+// (2) 김(수증기) 스프라이트 ~150개를 인스턴싱 한 번으로 그린다 (mkSprite → SB).
+// (3) 프레임이 낮으면 해상도를 자동으로 낮춘다. 주소에 ?fps를 붙이면 측정값이 보인다.
+const MSIG=new Map();
+function matSig(m){if(m===lampMat)return m.uuid;if(MSIG.has(m))return MSIG.get(m);const k=[m.type,m.color&&m.color.getHex(),m.emissive&&m.emissive.getHex(),m.map&&m.map.uuid,m.side,m.fog,m.vertexColors].join('|');MSIG.set(m,k);return k;}
+function mergeable(o){const m=o.material,g=o.geometry;return o.isMesh&&!o.userData.dyn&&o.visible&&!Array.isArray(m)&&(m.type==='MeshLambertMaterial'||m.type==='MeshBasicMaterial')&&!m.transparent&&g.isBufferGeometry&&g.attributes.position&&g.attributes.normal&&g.attributes.uv;}
+const _v=new THREE.Vector3(),_nm=new THREE.Matrix3(),_rel=new THREE.Matrix4(),_inv=new THREE.Matrix4();
+function mergeInto(list,parent){if(list.length<2)return 1;_inv.copy(parent.matrixWorld).invert();
+ let nv=0,ni=0;for(const o of list){const g=o.geometry;nv+=g.attributes.position.count;ni+=g.index?g.index.count:g.attributes.position.count;}
+ const P=new Float32Array(nv*3),N=new Float32Array(nv*3),U=new Float32Array(nv*2),I=nv>65535?new Uint32Array(ni):new Uint16Array(ni);let vo=0,io=0;
+ for(const o of list){const g=o.geometry,pa=g.attributes.position,na=g.attributes.normal,ua=g.attributes.uv;_rel.multiplyMatrices(_inv,o.matrixWorld);_nm.getNormalMatrix(_rel);
+  for(let i=0;i<pa.count;i++){const j=vo+i;_v.fromBufferAttribute(pa,i).applyMatrix4(_rel);P[j*3]=_v.x;P[j*3+1]=_v.y;P[j*3+2]=_v.z;_v.fromBufferAttribute(na,i).applyMatrix3(_nm).normalize();N[j*3]=_v.x;N[j*3+1]=_v.y;N[j*3+2]=_v.z;U[j*2]=ua.getX(i);U[j*2+1]=ua.getY(i);}
+  const flip=_rel.determinant()<0,idx=g.index?g.index.array:null,cnt=idx?idx.length:pa.count;
+  for(let t=0;t<cnt;t+=3){const a=idx?idx[t]:t,b=idx?idx[t+1]:t+1,c=idx?idx[t+2]:t+2;I[io++]=vo+a;I[io++]=vo+(flip?c:b);I[io++]=vo+(flip?b:c);}
+  vo+=pa.count;o.parent.remove(o);}
+ const mg=new THREE.BufferGeometry();mg.setAttribute('position',new THREE.BufferAttribute(P,3));mg.setAttribute('normal',new THREE.BufferAttribute(N,3));mg.setAttribute('uv',new THREE.BufferAttribute(U,2));mg.setIndex(new THREE.BufferAttribute(I,1));mg.computeBoundingSphere();
+ const mm=new THREE.Mesh(mg,list[0].material);mm.userData.merged=list.length;parent.add(mm);return 1;}
+function mergeUnder(root,skip){root.updateMatrixWorld(true);const groups=new Map();
+ root.traverse(o=>{if(o===root||!mergeable(o))return;for(let p=o.parent;p&&p!==root;p=p.parent)if(skip&&skip.has(p))return;const k=matSig(o.material);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(o);});
+ let b=0,a=0;groups.forEach(l=>{b+=l.length;a+=mergeInto(l,root);});return [b,a];}
+function mergeStatic(){scene.updateMatrixWorld(true);const groups=new Map(),CELL=40;
+ for(const o of scene.children){if(!mergeable(o))continue;const p=o.position,k=matSig(o.material)+'#'+(p.y<-1.5?'B':'G')+Math.floor(p.x/CELL)+','+Math.floor(p.z/CELL);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(o);}
+ let b=0,a=0;groups.forEach(l=>{b+=l.length;a+=mergeInto(l,scene);});
+ for(const G of guests){const r=mergeUnder(G.a.g);b+=r[0];a+=r[1];}
+ for(const w of walkers){const r=mergeUnder(w.a.body,new Set([...w.a.legs,...w.a.arms]));b+=r[0];a+=r[1];}
+ return {before:b,after:a};}
+// steam batch: mkSprite() 대신 쓰는 가벼운 대리 객체를 한 번에 그린다
+function sbBuild(){const L=SB.list,n=L.length;if(!n)return;const g=new THREE.InstancedBufferGeometry(),base=new THREE.PlaneGeometry(1,1);g.index=base.index;g.setAttribute('position',base.attributes.position);g.setAttribute('uv',base.attributes.uv);
+ SB.off=new THREE.InstancedBufferAttribute(new Float32Array(n*3),3);SB.dat=new THREE.InstancedBufferAttribute(new Float32Array(n*3),3);SB.off.setUsage(THREE.DynamicDrawUsage);SB.dat.setUsage(THREE.DynamicDrawUsage);g.setAttribute('offset',SB.off);g.setAttribute('dat',SB.dat);g.instanceCount=n;
+ const mat=new THREE.ShaderMaterial({uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{map:{value:null}}]),transparent:true,depthWrite:false,fog:true,
+  vertexShader:'attribute vec3 offset;attribute vec3 dat;varying vec2 vUv;varying vec2 vD;\n'+THREE.ShaderChunk.fog_pars_vertex+'\nvoid main(){vUv=uv;vD=dat.yz;vec4 mvPosition=modelViewMatrix*vec4(offset,1.0);mvPosition.xy+=position.xy*dat.x;gl_Position=projectionMatrix*mvPosition;\n'+THREE.ShaderChunk.fog_vertex+'\n}',
+  fragmentShader:'uniform sampler2D map;varying vec2 vUv;varying vec2 vD;\n'+THREE.ShaderChunk.fog_pars_fragment+'\nvoid main(){vec4 t=texture2D(map,vUv);gl_FragColor=vec4(t.rgb*vD.y,t.a*vD.x);\n'+THREE.ShaderChunk.fog_fragment+'\n}'});
+ mat.uniforms.map.value=softTex;SB.mesh=new THREE.Mesh(g,mat);SB.mesh.frustumCulled=false;scene.add(SB.mesh);}
+function sbUpdate(){if(!SB.mesh)return;const o=SB.off.array,d=SB.dat.array;SB.list.forEach((s,i)=>{const p=s.position;o[i*3]=p.x;o[i*3+1]=p.y;o[i*3+2]=p.z;d[i*3]=s.scale.v;d[i*3+1]=s.material.opacity;d[i*3+2]=s.material.color.v;});SB.off.needsUpdate=true;SB.dat.needsUpdate=true;}
+sbBuild();
+const PR_MAX=Math.min(devicePixelRatio||1,coarse?1.5:2);
+const PERF={stats:mergeStatic(),pr:PR_MAX,minPr:coarse?.8:1,acc:0,n:0,fps:60,show:/[?&]fps\b/.test(location.search)};
+renderer.setPixelRatio(PERF.pr);renderer.setSize(innerWidth,innerHeight);
+if(PERF.show){const d=document.createElement('div');d.id='fpsBox';document.body.appendChild(d);}
+function setPr(v){PERF.pr=+v.toFixed(2);renderer.setPixelRatio(PERF.pr);renderer.setSize(innerWidth,innerHeight);}
+function perfFrame(dt){PERF.acc+=dt;PERF.n++;if(PERF.acc<2)return;PERF.fps=PERF.n/PERF.acc;PERF.acc=0;PERF.n=0;
+ if(started&&!document.hidden){if(PERF.fps<38&&PERF.pr>PERF.minPr)setPr(Math.max(PERF.minPr,PERF.pr-.2));else if(PERF.fps>57&&PERF.pr<PR_MAX-.01)setPr(Math.min(PR_MAX,PERF.pr+.1));}
+ if(PERF.show){const i=renderer.info.render;$('fpsBox').textContent=`${PERF.fps.toFixed(0)} fps · 그리기 ${i.calls}회 · 삼각형 ${(i.triangles/1000).toFixed(0)}k · 해상도 ×${PERF.pr} · 합침 ${PERF.stats.before}→${PERF.stats.after}`;}}
 requestAnimationFrame(frame);
 window.__morak={pos,get level(){return level},set level(v){level=v},NET,mandarins,FARM,JZ,set camYaw(v){camYaw=v},set camPitch(v){camPitch=v}};
 })();
