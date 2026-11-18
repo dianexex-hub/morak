@@ -1587,6 +1587,205 @@ function netFrame(dt,now){
  });
 }
 
+// ================= 🛝 새 탕: 워터 슬라이드탕 · 바나나우유탕 · 쑥탕 · 얼음 냉탕 / 이레즈미 손님 / 손님 더 =================
+// 탕은 pools 배열에 덧붙여서 담그기·HUD·물소리가 기존 탕과 똑같이 동작한다. 매 프레임 일은 nbFrame(dt), 슬라이드 타기는 slideRide(dt).
+const NB={prev:null,coldWarned:false,inkT:0,inkMet:false,chkT:0};
+{const st=document.createElement('style');st.textContent='#notice.cold{background:rgba(40,110,170,.9);border-color:#cfeeff}#notice.banana{background:rgba(240,196,40,.94);border-color:#fff4c0;color:#4a3a10}#notice.ssuk{background:rgba(70,100,50,.9);border-color:#cfe6b0}#notice.slide{background:rgba(20,130,190,.9);border-color:#bfeaff;font-size:26px}#coldOv{background:radial-gradient(ellipse at center,rgba(200,235,255,0) 45%,rgba(170,215,255,.28) 75%,rgba(235,248,255,.65) 100%);transition:opacity .8s}';document.head.appendChild(st);
+ const ov=document.createElement('div');ov.id='coldOv';ov.className='ov';ov.style.opacity=0;$('soak').after(ov);
+ const b=document.createElement('button');b.className='btn hi ctx';b.id='slideBtn';b.textContent='🛝 슬라이드 타기';$('peelBtn').after(b);}
+const NEWP=[
+ {name:'슬라이드탕',temp:'34℃',type:'circle',x:26,z:4,r:3.4,desc:'워터 슬라이드가 떨어지는 미지근한 탕',deep:0x1f7fb0,shallow:0x7fd8f0,slide:true},
+ {name:'바나나우유탕',temp:'38℃',type:'circle',x:-28.6,z:-7,r:2.8,desc:'달달한 냄새 · 마시지 마세요 (진짜로)',deep:0xd9b54a,shallow:0xfff0b8,banana:true},
+ {name:'쑥탕',temp:'41℃',type:'rect',x:-20,z:-29,w:5,d:4,desc:'어르신 강력 추천 · 효능은 기분 탓일 수 있음',deep:0x3d5226,shallow:0x8a9a52,ssuk:true},
+ {name:'얼음 냉탕',temp:'16℃',type:'circle',x:16,z:19.5,r:2.6,desc:'30초가 국룰 · 심장이 쫄깃',deep:0x2f78a8,shallow:0xc8ecff,cold:true},
+];
+const [slideP,bananaP,ssukP,coldP]=NEWP;
+NEWP.forEach(p=>{pools.push(p);
+ const geo=p.type==='circle'?new THREE.CircleGeometry(p.r,48):new THREE.PlaneGeometry(p.w,p.d);
+ const m=new THREE.Mesh(geo,waterMat(p.deep,p.shallow,p.type==='circle'?0:1));m.rotation.x=-Math.PI/2;m.position.set(p.x,.05,p.z);scene.add(m);
+ if(p.type==='circle'){const ring=new THREE.Mesh(new THREE.TorusGeometry(p.r+.15,.26,8,48),lam(p.slide?0xeaf4f6:p.banana?0xf3d36b:0xa8d8ee));ring.rotation.x=Math.PI/2;ring.position.set(p.x,.13,p.z);scene.add(ring);}
+ if(!p.cold){const n=p.slide?8:12;for(let i=0;i<n;i++){const [x,z]=randInPool(p);steam.push({s:mkSprite(),p,life:Math.random(),sp:rnd(.08,.16),x,z,drift:rnd(-.3,.3),kind:0});}}
+});
+function nbSign(x,z,face,lines,bg,fg){const W=640,H=400;
+ const tex=canvasTex(W,H,(g)=>{g.fillStyle=bg;g.fillRect(0,0,W,H);g.strokeStyle=fg;g.lineWidth=16;g.strokeRect(8,8,W-16,H-16);g.fillStyle=fg;g.font='bold 54px serif';g.textAlign='center';g.fillText(lines[0],W/2,92);
+  g.fillStyle='#3a3020';g.font='28px sans-serif';lines.slice(1).forEach((l,i)=>g.fillText(l,W/2,172+i*54));});
+ const s=new THREE.Group();const post=new THREE.Mesh(new THREE.BoxGeometry(.12,1.2,.12),darkWood);post.position.y=.6;s.add(post);
+ const b=new THREE.Mesh(new THREE.PlaneGeometry(1.6,1),lam(0xffffff,{map:tex,side:THREE.DoubleSide}));b.position.y=1.55;s.add(b);
+ s.position.set(x,0,z);s.rotation.y=Math.atan2(face[0]-x,face[1]-z);scene.add(s);circles.push({x,z,r:.3,lv:0});}
+
+// ---- 워터 슬라이드 (탑 + 반원 미끄럼 + 기둥) ----
+const SLIDE={R:.5,ride:null,lad:{x:29.75,z:9.5},T:0};
+SLIDE.curve=new THREE.CatmullRomCurve3([[31.5,6.4,8.2],[32.6,5.7,5.4],[32.2,4.7,2.0],[30.2,3.7,-.8],[27.2,2.7,-1.6],[24.4,1.8,-.5],[23.4,1.05,2.2],[24.7,.5,3.8]].map(a=>new THREE.Vector3(a[0],a[1],a[2])));
+SLIDE.len=SLIDE.curve.getLength();
+const rideU=t=>Math.min(1,.1*t+.04*t*t);SLIDE.T=(-.1+Math.sqrt(.01+.16))/.08; // 끝까지 약 3.9초
+{const C=SLIDE.curve,R=SLIDE.R,N=160,M=14,up=new THREE.Vector3(0,1,0);
+ const P=[],U=[],I=[],WP=[],WU=[],WI=[];const S=new THREE.Vector3(),Nn=new THREE.Vector3(),d=new THREE.Vector3();
+ for(let i=0;i<=N;i++){const u=i/N,p=C.getPointAt(u),T=C.getTangentAt(u);S.crossVectors(T,up).normalize();Nn.crossVectors(S,T).normalize();
+  for(let j=0;j<=M;j++){const a=-.45+(Math.PI+.9)*j/M;d.copy(S).multiplyScalar(Math.cos(a)).addScaledVector(Nn,-Math.sin(a));P.push(p.x+d.x*R,p.y+d.y*R,p.z+d.z*R);U.push(j/M,u*8);}
+  for(const k of [-1,1]){WP.push(p.x-Nn.x*(R-.04)+S.x*k*.2,p.y-Nn.y*(R-.04)+S.y*k*.2,p.z-Nn.z*(R-.04)+S.z*k*.2);WU.push(k<0?0:1,-u*SLIDE.len/2);}
+  if(i<N){for(let j=0;j<M;j++){const a=i*(M+1)+j,b=a+M+1;I.push(a,b,a+1,b,b+1,a+1);}const w=i*2;WI.push(w,w+2,w+1,w+2,w+3,w+1);}}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();
+ const tube=new THREE.Mesh(g,lam(0xffb21c,{side:THREE.DoubleSide}));scene.add(tube);
+ const wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(WP,3));wg.setAttribute('uv',new THREE.Float32BufferAttribute(WU,2));wg.setIndex(WI);
+ scene.add(new THREE.Mesh(wg,wfMat));
+ // 기둥: 물 위가 아닌 곳에만
+ const pm=lam(0xdedede);[.16,.33,.5,.66,.8].forEach(u=>{const p=C.getPointAt(u);if(Math.hypot(p.x-slideP.x,p.z-slideP.z)<slideP.r+.4)return;const h=p.y-R;
+  const c=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,h,8),pm);c.position.set(p.x,h/2,p.z);scene.add(c);circles.push({x:p.x,z:p.z,r:.3,lv:0});});
+ // 탑: 기둥 4개, 발판, 난간, 지붕, 서쪽 사다리
+ const X0=30.3,X1=32.7,Z0=8.3,Z1=10.7,TOP=6.1,tw=lam(0x2f8fd8),rail=lam(0xf4f4f4);
+ [[X0,Z0],[X1,Z0],[X0,Z1],[X1,Z1]].forEach(([x,z])=>{const c=new THREE.Mesh(new THREE.BoxGeometry(.18,TOP+1.7,.18),tw);c.position.set(x,(TOP+1.7)/2,z);scene.add(c);});
+ const deck=solid(X0,X1,TOP-.15,TOP,Z0,Z1,lam(0x2a6fb0));blockers.push(deck);
+ solid(X0,X1,TOP+.9,TOP+1,Z1-.05,Z1+.05,rail);solid(X1-.05,X1+.05,TOP+.9,TOP+1,Z0,Z1,rail);solid(X0-.05,X0+.05,TOP+.9,TOP+1,Z0,9.1,rail);
+ const roof=new THREE.Mesh(new THREE.ConeGeometry(2,1.2,4),lam(0xe2453c));roof.position.set((X0+X1)/2,TOP+2.3,(Z0+Z1)/2);roof.rotation.y=Math.PI/4;scene.add(roof);blockers.push(roof);
+ for(const z of [9.15,9.85]){const r=new THREE.Mesh(new THREE.BoxGeometry(.06,TOP+.9,.06),rail);r.position.set(X0-.12,(TOP+.9)/2,z);scene.add(r);}
+ for(let y=.35;y<TOP;y+=.38){const r=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.7,6),rail);r.rotation.x=Math.PI/2;r.position.set(X0-.12,y,9.5);scene.add(r);}
+ boxes.push({x0:X0-.05,x1:X1+.05,z0:Z0-.05,z1:Z1+.05,lv:0});
+ nbSign(28.3,11.9,[22,13],['🛝 워터 슬라이드','앉아서, 발부터 내려가요','머리부터 금지 · 어르신도 환영','도착하면 슬라이드탕에 풍덩!'],'#eaf8ff','#1f7fb0');}
+
+// ---- 🍌 바나나우유탕: 기울어진 큰 우유병이 쏟아붓는 탕 ----
+{const g=new THREE.Group();g.position.set(-32.2,1.0,-7);g.rotation.z=-.75;
+ const prof=[[0,0],[.5,0],[.72,.22],[.84,.6],[.8,1.0],[.6,1.3],[.36,1.5],[.3,1.72],[.34,1.82],[.33,1.95],[0,1.95]].map(a=>new THREE.Vector2(a[0]*1.6,a[1]*1.6));
+ const bottle=new THREE.Mesh(new THREE.LatheGeometry(prof,24),lam(0xffe48a,{emissive:0x2a2000}));g.add(bottle);
+ const label=new THREE.Mesh(new THREE.CylinderGeometry(1.36,1.36,.55,24,1,true),lam(0xffffff,{map:canvasTex(512,64,(c,w,h)=>{c.fillStyle='#fffaf0';c.fillRect(0,0,w,h);c.fillStyle='#e8a91a';c.font='bold 40px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('바나나 우유 · 바나나 우유',w/2,h/2);}),side:THREE.DoubleSide}));label.position.y=1.15;g.add(label);
+ scene.add(g);
+ const crate=new THREE.Mesh(new THREE.BoxGeometry(1.4,.9,1.6),darkWood);crate.position.set(-32.4,.45,-7);scene.add(crate);circles.push({x:-32.4,z:-7,r:1.1,lv:0});
+ const top=new THREE.Vector3(0,1.95*1.6,0).applyEuler(g.rotation).add(g.position);
+ for(let k=0;k<2;k++){const s=new THREE.Mesh(new THREE.PlaneGeometry(.38,top.y),new THREE.ShaderMaterial({uniforms:{t:shared.t,lite:shared.lite},transparent:true,depthWrite:false,side:THREE.DoubleSide,vertexShader:wfMat.vertexShader,
+  fragmentShader:'uniform float t,lite;varying vec2 vUv;float hash(float n){return fract(sin(n)*43758.5453);}void main(){float col=floor(vUv.x*12.);float v=fract(vUv.y*2.+t*(1.+hash(col)*.6)*1.4+hash(col+3.));float a=(.6+.35*smoothstep(.2,1.,v))*smoothstep(0.,.2,vUv.x)*smoothstep(1.,.8,vUv.x);gl_FragColor=vec4(vec3(1.,.93,.66)*(.75+.25*v)*(.4+.6*lite),a);}'}));
+  s.position.set(top.x,top.y/2,top.z);s.rotation.y=k*Math.PI/2;scene.add(s);}
+ spouts.push({x:top.x,z:top.z});
+ // 큰 빨대
+ const straw=new THREE.Mesh(new THREE.CylinderGeometry(.13,.13,4.2,12),lam(0xffffff,{map:canvasTex(64,256,(c,w,h)=>{c.fillStyle='#fff';c.fillRect(0,0,w,h);c.fillStyle='#ff6fa0';for(let y=-64;y<h;y+=48){c.beginPath();c.moveTo(0,y);c.lineTo(w,y+40);c.lineTo(w,y+60);c.lineTo(0,y+20);c.fill();}})}));
+ straw.position.set(-27.3,1.6,-5.9);straw.rotation.set(.25,0,-.35);scene.add(straw);
+ nbSign(-24.4,-10.8,[-18,-6],['🍌 바나나우유탕','달달한 우유 향 · 38℃','마시지 마세요 (진짜로)','나와서 진짜 우유는 매점에서!'],'#fffaf0','#e8a91a');}
+
+// ---- 🌿 쑥탕: 돌 탕 + 둥둥 약재 주머니 ----
+const ssukBob=[];
+{const p=ssukP,st=lam(0x5d5952,{flatShading:true});
+ const pad=new THREE.Mesh(new THREE.PlaneGeometry(p.w+2.6,p.d+2.6),lam(0x6f6a60));pad.rotation.x=-Math.PI/2;pad.position.set(p.x,.02,p.z);scene.add(pad);
+ [[p.w+.7,.35,0,p.d/2+.17],[p.w+.7,.35,0,-p.d/2-.17],[.35,p.d,p.w/2+.17,0],[.35,p.d,-p.w/2-.17,0]].forEach(r=>{const b=new THREE.Mesh(new THREE.BoxGeometry(r[0],.5,r[1]),st);b.position.set(p.x+r[2],.25,p.z+r[3]);scene.add(b);});
+ const cloth=lam(0xe8dcc0),tie=lam(0x7a5a3a);
+ for(let k=0;k<3;k++){const g=new THREE.Group();const s=new THREE.Mesh(new THREE.SphereGeometry(.24,10,8),cloth);s.scale.set(1,.6,1);g.add(s);const t=new THREE.Mesh(new THREE.CylinderGeometry(.05,.09,.14,8),tie);t.position.y=.16;g.add(t);
+  g.position.set(p.x-1.4+k*1.4,.08,p.z+(k%2?.7:-.6));scene.add(g);ssukBob.push({g,ph:k*2.1,x:g.position.x,z:g.position.z});}
+ const leaf=lam(0x5f7f3a,{flatShading:true});for(let k=0;k<5;k++){const c=new THREE.Mesh(new THREE.ConeGeometry(.12,.7,5),leaf);c.position.set(p.x+p.w/2+.2,.75,p.z-1.2+k*.12);c.rotation.z=rnd(-.3,.3);scene.add(c);}
+ nbSign(-16.3,-30.6,[-10,-25],['🌿 쑥탕 · 41℃','혈액순환 · 피로회복 · 기분전환','어르신 강력 추천','※ 효능은 기분 탓일 수 있음'],'#f3f0e2','#4d6b2a');}
+
+// ---- 🧊 얼음 냉탕: 둥둥 얼음 + 펭귄상 ----
+const ice=new THREE.InstancedMesh(new THREE.BoxGeometry(.34,.24,.34),lam(0xeaf8ff,{emissive:0x1a2a38}),12);ice.userData.dyn=1;scene.add(ice);
+const iceD=[];for(let i=0;i<12;i++){const a=Math.random()*6.28,r=Math.sqrt(Math.random())*(coldP.r-.5);iceD.push({x:coldP.x+Math.cos(a)*r,z:coldP.z+Math.sin(a)*r,ry:rnd(0,3),ph:rnd(0,6)});}
+{const pg=new THREE.Group(),blk=lam(0x23262e),wht=lam(0xf6f6f2),org=lam(0xf0a020);
+ const b=new THREE.Mesh(new THREE.SphereGeometry(.42,14,12),blk);b.scale.set(1,1.35,.9);b.position.y=.6;pg.add(b);
+ const bl=new THREE.Mesh(new THREE.SphereGeometry(.34,14,12),wht);bl.scale.set(.9,1.25,.6);bl.position.set(0,.55,.17);pg.add(bl);
+ const h=new THREE.Mesh(new THREE.SphereGeometry(.28,14,12),blk);h.position.y=1.2;pg.add(h);
+ const bk=new THREE.Mesh(new THREE.ConeGeometry(.07,.2,8),org);bk.rotation.x=Math.PI/2;bk.position.set(0,1.17,.3);pg.add(bk);
+ for(const k of [-1,1]){const e=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),wht);e.position.set(k*.1,1.27,.23);pg.add(e);const f=new THREE.Mesh(new THREE.BoxGeometry(.16,.05,.22),org);f.position.set(k*.13,.03,.12);pg.add(f);
+  const w=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),blk);w.scale.set(.4,1.4,.8);w.position.set(k*.42,.65,0);w.rotation.z=k*.4;pg.add(w);}
+ const mf=new THREE.Mesh(new THREE.TorusGeometry(.26,.06,6,16),lam(0xd8302a));mf.rotation.x=Math.PI/2;mf.position.y=1.0;pg.add(mf);
+ pg.position.set(18.9,0,21.2);pg.rotation.y=Math.atan2(coldP.x-18.9,coldP.z-21.2)+.6;scene.add(pg);circles.push({x:18.9,z:21.2,r:.5,lv:0});
+ nbSign(19.6,16.8,[14,12],['🧊 얼음 냉탕 · 16℃','온탕 ↔ 냉탕 번갈아 하면 개운해요','30초가 국룰입니다','심장 약하신 분은 발만 살짝'],'#eef8ff','#2f78a8');}
+
+// ---- 이레즈미(문신) 텍스처 ----
+function inkTorsoTex(sk){return canvasTex(512,256,(g,W,H)=>{g.fillStyle='#'+new THREE.Color(sk).getHexString();g.fillRect(0,0,W,H);
+ const B=W*.75; // 등 한가운데 (u=.75)
+ // 바람·구름 배경 (먹색 줄무늬)
+ g.strokeStyle='rgba(30,36,60,.85)';g.lineWidth=9;g.lineCap='round';
+ for(let k=0;k<7;k++){const y=34+k*24;g.beginPath();g.moveTo(B-112,y+Math.sin(k)*6);g.bezierCurveTo(B-60,y-16,B+40,y+18,B+112,y-4);g.stroke();}
+ // 용 몸통: S자, 비늘
+ const path=[];for(let i=0;i<=60;i++){const f=i/60;path.push([B+Math.sin(f*Math.PI*2.2+.4)*70,22+f*170]);}
+ g.lineJoin='round';g.strokeStyle='#14161c';g.lineWidth=34;g.beginPath();path.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.stroke();
+ g.strokeStyle='#2c8c6e';g.lineWidth=26;g.stroke();
+ g.fillStyle='#f0c040';path.forEach((p,i)=>{if(i%3)return;g.beginPath();g.arc(p[0],p[1],5,0,Math.PI);g.fill();});
+ g.strokeStyle='#1d5e4a';g.lineWidth=2;path.forEach((p,i)=>{if(i%2)return;g.beginPath();g.arc(p[0],p[1]+3,7,Math.PI*1.1,Math.PI*1.9);g.stroke();});
+ // 용 머리 (어깨 위쪽)
+ const hx=path[0][0],hy=path[0][1];g.fillStyle='#2c8c6e';g.strokeStyle='#14161c';g.lineWidth=4;g.beginPath();g.ellipse(hx+8,hy+4,30,18,-.3,0,7);g.fill();g.stroke();
+ g.fillStyle='#d8302a';for(let k=0;k<6;k++){g.beginPath();g.moveTo(hx-14+k*7,hy-6);g.lineTo(hx-26+k*9,hy-26-(k%2)*8);g.lineTo(hx-6+k*7,hy-4);g.fill();}
+ g.fillStyle='#fff';g.beginPath();g.arc(hx+16,hy,5,0,7);g.fill();g.fillStyle='#14161c';g.beginPath();g.arc(hx+17,hy,2.4,0,7);g.fill();
+ g.strokeStyle='#f0e0b0';g.lineWidth=3;g.beginPath();g.moveTo(hx+34,hy+6);g.quadraticCurveTo(hx+60,hy+18,hx+70,hy-6);g.stroke();
+ // 구슬
+ g.fillStyle='#f6f0ff';g.strokeStyle='#14161c';g.lineWidth=3;g.beginPath();g.arc(B+64,150,13,0,7);g.fill();g.stroke();
+ // 가슴 양쪽 모란 (앞 가운데 u=.25 는 비움)
+ const peony=(x,y,s)=>{g.fillStyle='#2f6b3a';for(let k=0;k<3;k++){g.beginPath();g.ellipse(x+Math.cos(k*2.1)*s*1.3,y+Math.sin(k*2.1)*s*1.3,s*.9,s*.45,k*2.1,0,7);g.fill();}
+  for(let k=0;k<8;k++){g.fillStyle=k%2?'#c8243a':'#e8506a';g.beginPath();g.ellipse(x+Math.cos(k*.8)*s*.5,y+Math.sin(k*.8)*s*.5,s*.75,s*.5,k*.8,0,7);g.fill();}
+  g.fillStyle='#f6d040';g.beginPath();g.arc(x,y,s*.28,0,7);g.fill();g.strokeStyle='#14161c';g.lineWidth=2;g.beginPath();g.arc(x,y,s*1.05,0,7);g.stroke();};
+ peony(W*.25-74,70,22);peony(W*.25+74,70,22);peony(W*.5+30,110,20);peony(W*.0+30,110,20);});}
+function inkSleeveTex(){return canvasTex(256,128,(g,W,H)=>{g.fillStyle='#24467a';g.fillRect(0,0,W,H);
+ g.strokeStyle='#e8f0ff';g.lineWidth=3;for(let y=10;y<H;y+=18)for(let x=-10;x<W;x+=26){g.beginPath();g.arc(x+(y/18%2)*13,y,11,Math.PI,0);g.stroke();}
+ const koi=(x,y,c)=>{g.fillStyle=c;g.strokeStyle='#14161c';g.lineWidth=3;g.beginPath();g.ellipse(x,y,26,12,.2,0,7);g.fill();g.stroke();g.beginPath();g.moveTo(x-22,y-2);g.lineTo(x-42,y-14);g.lineTo(x-38,y+12);g.closePath();g.fill();g.stroke();
+  g.fillStyle='#fff';g.beginPath();g.arc(x+15,y-2,3,0,7);g.fill();};
+ koi(70,50,'#f08a20');koi(190,86,'#e8402a');});}
+const inkSleeveM=lam(0xffffff,{map:inkSleeveTex()});
+function inkUp(av){const sk=av.skin.color.getHex(),em=new THREE.Color(sk).multiplyScalar(.1);
+ const torso=av.body.children.find(o=>o.isMesh&&o.geometry.type==='SphereGeometry'&&Math.abs(o.position.y-.66)<.01);
+ if(torso)torso.material=lam(0xffffff,{map:inkTorsoTex(sk),emissive:em});
+ av.arms.forEach(p=>{p.children[0].material=inkSleeveM;});}
+
+// ---- 손님 더: 탕에 담근 손님 + 이레즈미 손님 ----
+const soakAt=(p,x,z,col,head)=>guest(x,-.55,z,col,'towel',head,Math.atan2(p.x-x,p.z-z));
+soakAt(slideP,27.9,5.6,0xa2d2ff,null);soakAt(slideP,26.6,1.4,0xffd6a5,'towel');
+soakAt(bananaP,-27.3,-5.8,0xffc8dd,'towel');soakAt(bananaP,-29.4,-8.4,0xd8e2a8,null);
+soakAt(ssukP,-21.5,-29.9,0xcdb4db,'yang');
+soakAt(coldP,16.9,20.5,0xb5d8eb,'towel');
+soakAt(pools[0],2.8,-10.8,0xf7c59f,null);soakAt(pools[0],-4.9,-3.4,0xb7e4c7,'towel');
+soakAt(ssukP,-18.6,-28.3,0xe9c4a0,'towel');inkUp(guests[guests.length-1].a); // 쑥탕 잉어 문신 할아버지
+// 꽃집 형님: 등에 용, 팔에 잉어 — 냉탕 둘레를 산책
+const ink={a:buildAvatar(0xe9b98f,'towel','towel'),P:mkPath([[11.5,15.4],[22,15.4],[22,23.5],[11.5,23.5]]),v:.85,o:3,kid:false,next:rnd(10,30)};
+inkUp(ink.a);ink.a.g.scale.setScalar(1.15);{const ns=nameSprite('🌸 꽃집 형님');ns.position.y=1.98;ink.a.g.add(ns);}
+walkers.push(ink,
+ {a:buildAvatar(0xffe0b8,'towel',null),P:mkPath([[-22.8,-12],[-22.8,1.5]]),v:.8,o:4,kid:false,next:rnd(10,30)},
+ {a:buildAvatar(0xf7c59f,'jjim','yang'),P:mkPath([[-14,-28.6],[8,-28.6]]),v:.9,o:11,kid:false,next:rnd(10,30)});
+const INK_LINES=['이거요? 딸이 고른 도안이에요','꽃 사러 오세요~ 꽃집 해요 🌸','냉탕은 30초가 국룰입니다','무서워 보여도 바나나우유 좋아해요','등 밀어드릴까요? 아 사장님은…','수건 떨어졌어요~ 여기요'];
+// 슬라이드 타는 꼬마: 공통 시계로 26초마다 한 번씩 (모두에게 같은 장면)
+const SK={a:buildAvatar(0xffd6a5,'kid',null),T:26,o:7,prev:-1};SK.a.g.scale.setScalar(.66);
+const _sp=new THREE.Vector3(),_st=new THREE.Vector3();
+function onSlide(t){const u=rideU(t);SLIDE.curve.getPointAt(u,_sp);SLIDE.curve.getTangentAt(u,_st);return [_sp.x,_sp.y-SLIDE.R+.04,_sp.z,Math.atan2(_st.x,_st.z)];}
+const S_END=(()=>{const p=SLIDE.curve.getPointAt(1),t=SLIDE.curve.getTangentAt(1);t.y=0;t.normalize();return {x:p.x+t.x*1.1,z:p.z+t.z*1.1,yaw:Math.atan2(t.x,t.z)};})();
+function seatPose(a,on){a.legs.forEach(l=>{l.rotation.x=on?-1.45:l.rotation.x;});if(on)a.arms.forEach(l=>{l.rotation.x=-2.5;});}
+function kidFrame(dt){const a=SK.a,c=(Date.now()/1000+SK.o)%SK.T,L=SLIDE.lad,t1=1.6,t2=2.2,t3=t2+SLIDE.T,t4=t3+1.4;let x,y,z,yaw,mv=false,seat=false;
+ if(c<t1){x=L.x-.1;z=L.z;y=c/t1*6.1;yaw=Math.PI/2;mv=true;}
+ else if(c<t2){const f=(c-t1)/(t2-t1);x=30.3+f*1.2;z=9.5-f*1.2;y=6.1;yaw=Math.PI*.75;mv=true;}
+ else if(c<t3){[x,y,z,yaw]=onSlide(c-t2);seat=true;}
+ else if(c<t4){x=S_END.x;z=S_END.z;y=-.32+Math.sin(c*5)*.04;yaw=S_END.yaw;}
+ else{const pts=[[S_END.x,S_END.z],[29.4,7.8],[L.x-.6,L.z]];let d=(c-t4)*1.3;x=pts[2][0];z=pts[2][1];yaw=Math.PI/2;y=0;
+  for(let i=0;i<2;i++){const A=pts[i],B=pts[i+1],l=Math.hypot(B[0]-A[0],B[1]-A[1]);if(d<l){x=A[0]+(B[0]-A[0])*d/l;z=A[1]+(B[1]-A[1])*d/l;yaw=Math.atan2(B[0]-A[0],B[1]-A[1]);mv=true;break;}d-=l;}
+  if(Math.hypot(x-slideP.x,z-slideP.z)<slideP.r-.3)y=-.32;}
+ a.g.position.set(x,y,z);a.g.rotation.y=yaw;animWalk(a,mv,dt,12);seatPose(a,seat);
+ if(SK.prev>=0&&level===0&&started){const d=Math.hypot(x-pos.x,z-pos.z);
+  if(SK.prev<t2&&c>=t2&&d<30)voice([['i',.12],['a',.5]],rnd(430,500),.12*(1-d/30),0,true);
+  if(SK.prev<t3&&c>=t3&&d<24){if(d<14)splash();bubbleAt(x,1.3,z,'풍덩!');}}
+ SK.prev=c;}
+// 내가 슬라이드 타기
+function slideRide(dt){const R=SLIDE.ride;R.t+=dt;const L=SLIDE.lad;
+ if(R.ph===0){if(R.t<1.5){pos.set(L.x-.05,R.t/1.5*6.1,L.z);faceYaw=Math.PI/2;me.legs[0].rotation.x=Math.sin(R.t*14)*.5;me.legs[1].rotation.x=-Math.sin(R.t*14)*.5;}
+  else if(R.t<2.1){const f=(R.t-1.5)/.6;pos.set(30.3+f*1.2,6.1,9.5-f*1.2);faceYaw=Math.PI*.75;}
+  else{R.ph=1;R.t=0;whoosh();voice([['u',.15],['a',.3],['a',.7]],rnd(200,250),.16,0,true);}}
+ if(R.ph===1){const [x,y,z,yaw]=onSlide(R.t);pos.set(x,y,z);faceYaw=yaw;camYaw=angLerp(camYaw,yaw+Math.PI,Math.min(1,dt*2.5));camPitch+=(.38-camPitch)*Math.min(1,dt*2);seatPose(me,true);
+  if(R.t>=SLIDE.T){R.ph=2;R.t=0;}}
+ if(R.ph===2){const f=Math.min(1,R.t/.45);pos.set(S_END.x,0,S_END.z);faceYaw=S_END.yaw;
+  if(f>=1){SLIDE.ride=null;burble(.16,12,true);setTimeout(()=>burble(.11,8),200);bubbleAt(pos.x,1.6,pos.z,'풍덩!');showNotice('💦 풍덩~!!\n한 번 더 탈까?',2200,'slide');}}}
+function whoosh(){if(!ok())return;const t=AC.currentTime;S.noise(t,SLIDE.T+.3,.22,'bandpass',700,.7);S.noise(t+.4,SLIDE.T-.2,.12,'highpass',2400,.5);}
+function shiver(){voice([['eu',.07],['eu',.07],['eu',.07],['eu',.07],['eu',.07],['u',.3]],rnd(150,175),.15,0);}
+$('slideBtn').onclick=()=>{if(SLIDE.ride||cur)return;lying=null;SLIDE.ride={ph:0,t:0};$('slideBtn').classList.remove('show');popText('사다리를 올라가요…');};
+function nbFrame(dt){
+ if(!NB.merged){NB.merged=1;mergeUnder(SK.a.body,new Set([...SK.a.legs,...SK.a.arms]));} // 꼬마 몸통 합치기 (성능 구역 준비 뒤)
+ // 둥둥 떠 있는 것들
+ iceD.forEach((o,i)=>{dm.position.set(o.x+Math.sin(TT*.3+o.ph)*.12,.08+Math.sin(TT*1.4+o.ph)*.03,o.z+Math.cos(TT*.25+o.ph)*.12);dm.rotation.set(0,o.ry+TT*.05,Math.sin(TT+o.ph)*.06);dm.scale.set(1,1,1);dm.updateMatrix();ice.setMatrixAt(i,dm.matrix);});ice.instanceMatrix.needsUpdate=true;
+ ssukBob.forEach(o=>{o.g.position.set(o.x+Math.sin(TT*.35+o.ph)*.25,.06+Math.sin(TT*1.1+o.ph)*.03,o.z+Math.cos(TT*.3+o.ph)*.2);o.g.rotation.y=TT*.1+o.ph;});
+ kidFrame(dt);
+ // 탕에 들어갈 때
+ if(cur!==NB.prev){const p=cur;NB.prev=p;NB.coldWarned=false;$('coldOv').style.opacity=p&&p.cold?1:0;
+  if(p&&p.cold){setTimeout(()=>showNotice('🥶 으아아아 차가워!!\n심장이 쫄깃해진다…',3000,'cold'),300);shiver();}
+  else if(p&&p.banana)setTimeout(()=>showNotice('🍌 바나나우유에 퐁당!\n빨대 꽂고 싶어진다',3000,'banana'),350);
+  else if(p&&p.ssuk)setTimeout(()=>showNotice('🌿 쑥 향이 코끝을 찌른다…\n어르신들이 왜 좋아하는지 알 것 같다',3400,'ssuk'),350);}
+ if(cur&&cur.cold&&soakT>30&&!NB.coldWarned){NB.coldWarned=true;popText('30초 지났어요! 국룰대로 온탕으로 ♨');shiver();}
+ // 슬라이드 버튼, 꽃집 형님 말 걸기 (0.25초마다)
+ NB.chkT-=dt;if(NB.chkT>0)return;NB.chkT=.25;
+ $('slideBtn').classList.toggle('show',started&&level===0&&!SLIDE.ride&&!cur&&Math.hypot(pos.x-SLIDE.lad.x,pos.z-SLIDE.lad.z)<2.2);
+ const ip=ink.a.g.position,d=Math.hypot(ip.x-pos.x,ip.z-pos.z);
+ if(started&&level===0&&d<3.4&&performance.now()>NB.inkT){NB.inkT=performance.now()+(NB.inkMet?14000:9000);
+  if(!NB.inkMet){NB.inkMet=true;popText('😳 …등에 용이?!');}
+  bubbleAt(ip.x,2.55,ip.z,INK_LINES[(Math.random()*INK_LINES.length)|0]);
+  const v=new THREE.Vector3(ip.x-camera.position.x,0,ip.z-camera.position.z).normalize();voice([['o',.12],['a',.12],['e',.12],['yo',.32]],rnd(100,120),.16,v.x*Math.cos(camYaw)-v.z*Math.sin(camYaw));}}
+
 // ================= loop =================
 const ray=new THREE.Raycaster();const tgt=new THREE.Vector3(),dirV=new THREE.Vector3();
 let last=performance.now(),TT=0,bloopT=0,hudT=0,tvT=0,crT=0,chimeT=5,warnedClothes=false,curRoom=null,heatT=0;
@@ -1598,7 +1797,7 @@ function frame(now){
  updateSky(hourNow());
  // ---- movement ----
  let moving=false;
- if(started&&!peelOpen&&!kioskOpen){
+ if(started&&!peelOpen&&!kioskOpen&&!SLIDE.ride){
   let fw=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y;
   let st=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x;
   if(keys.ArrowLeft)camYaw+=1.8*dt;if(keys.ArrowRight)camYaw-=1.8*dt;
@@ -1621,8 +1820,9 @@ function frame(now){
  }
  const onS=stairAt(pos.x,pos.z);
  if(onS){pos.y=onS.y(pos.x,pos.z);level=pos.y<onS.mid?onS.lo:onS.hi;}else pos.y=levelY(level);
+ if(SLIDE.ride)slideRide(dt);
  const outdoor=level===0&&!inBldg(pos.x,pos.z)&&!onS;
- const p=outdoor?(pools.find(q=>inPool(q,pos.x,pos.z))||null):null;
+ const p=outdoor&&pos.y<.3?(pools.find(q=>inPool(q,pos.x,pos.z))||null):null;
  if(p!==cur){if(p&&!cur){splash();soakT=0;if(p.juice)setTimeout(()=>showNotice('내가 오렌지 쥬스가 되어가는 기분이다.',3200,'juice'),350);else if(me.outfit==='clothes'&&!warnedClothes){warnedClothes=true;setTimeout(()=>popText('앗, 옷 입은 채로 들어왔어요…'),400);}}
   cur=p;$('soak').style.opacity=p?1:0;}
  if(cur)soakT+=dt;
@@ -1672,7 +1872,7 @@ function frame(now){
  for(let k=0;k<14;k++){const i=(Math.random()*BN)|0;const [x,z]=randInPool(tp);bPos[i*3]=x;bPos[i*3+2]=z;}
  for(let i=0;i<BN;i++)bPos[i*3+1]=.07+Math.abs(Math.sin(TT*6+i))*.03;
  bGeo.attributes.position.needsUpdate=true;
- updMandarins(dt);farmFrame(dt,now);roamFrame(dt);if(peelOpen)peelTick(dt);
+ updMandarins(dt);farmFrame(dt,now);roamFrame(dt);nbFrame(dt);if(peelOpen)peelTick(dt);
  fans.forEach(f=>{f.blades.rotation.z-=dt*22;f.head.rotation.y=Math.sin(TT*.5+f.ph)*.8;});
  chimes.forEach((c,i)=>{c.rotation.z=Math.sin(TT*1.3+i)*.08;c.rotation.x=Math.sin(TT*.9+i*2)*.05;});
  snow.visible=snowOn&&outdoor;
