@@ -274,6 +274,7 @@ try{const m=await import('../trystero.mjs');window.__joinRoom=m.joinRoom;}catch(
 window.dispatchEvent(new Event('net-ready'));
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 (function(){
 if(!window.THREE){document.getElementById('err').style.display='flex';return;}
@@ -342,6 +343,19 @@ const grassMat=lam(0x1d2a1f);
 const BBX0=-24,BBX1=24,BBZ0=28,BBZ1=52; // basement extents
 [[-700,700,-700,27.7],[-700,700,44,700],[-700,-12,27.7,44],[12,700,27.7,44]].forEach(r=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(r[1]-r[0],r[3]-r[2]),grassMat);m.rotation.x=-Math.PI/2;m.position.set((r[0]+r[1])/2,-.03,(r[2]+r[3])/2);scene.add(m);});
 
+// ===== 모락 NEXT: Blender 모형 =====
+// ?v4 를 붙이면 예전(코드) 모습으로 비교. 불러오기에 실패하면 예전 모습으로 돌아감.
+const NX={old:/[?&]v4\b/.test(location.search)||!THREE.GLTFLoader,loaded:[]};
+function nxLoad(file,onFail){
+ if(NX.old)return;
+ new THREE.GLTFLoader().load('assets/'+file,gl=>{
+  const g=new THREE.Group();g.name='nx:'+file;const aniso=renderer.capabilities.getMaxAnisotropy();
+  gl.scene.traverse(o=>{if(!o.isMesh)return;const map=o.material.map;
+   if(map){map.anisotropy=Math.min(8,aniso);map.encoding=THREE.sRGBEncoding;}
+   o.material=new THREE.MeshLambertMaterial({map,color:0xffffff});});
+  g.add(gl.scene);scene.add(g);NX.loaded.push(file);
+ },undefined,e=>{console.warn('NEXT 모형 불러오기 실패',file,e);onFail&&onFail();});
+}
 // ================= pools =================
 const pools=[
  {name:'노천탕',temp:'40℃',type:'circle',x:0,z:-7,r:7,desc:'하늘이 지붕인 큰 탕',deep:0x1f5c5e,shallow:0x5fa8a0,sp:-2.2},
@@ -380,7 +394,7 @@ const bambooM=lam(0x7f9a4a),spoutStone=lam(0x8a8478);
 pools.forEach(p=>{
  const geo=p.type==='circle'?new THREE.CircleGeometry(p.r,56):new THREE.PlaneGeometry(p.w,p.d);
  const m=new THREE.Mesh(geo,waterMat(p.deep,p.shallow,p.type==='circle'?0:1));m.rotation.x=-Math.PI/2;m.position.set(p.x,.05,p.z);scene.add(m);
- if(p.name==='노천탕'||p.name==='폭포탕'){const n=Math.round(p.r*5.5);for(let k=0;k<n;k++){const a=k/n*Math.PI*2+rnd(-.05,.05),rr=p.r+rnd(.15,.45),s=rnd(.45,.85);rock(p.x+Math.cos(a)*rr,s*.25,p.z+Math.sin(a)*rr,s*1.1,s*.6,s);}}
+ if((p.name==='노천탕'&&NX.old)||p.name==='폭포탕'){const n=Math.round(p.r*5.5);for(let k=0;k<n;k++){const a=k/n*Math.PI*2+rnd(-.05,.05),rr=p.r+rnd(.15,.45),s=rnd(.45,.85);rock(p.x+Math.cos(a)*rr,s*.25,p.z+Math.sin(a)*rr,s*1.1,s*.6,s);}}
  if(p.type==='rect'){
   const deck=new THREE.Mesh(new THREE.PlaneGeometry(p.w+3,p.d+3),lam(0x8d6b48));deck.rotation.x=-Math.PI/2;deck.position.set(p.x,.02,p.z);scene.add(deck);
   [[p.w+.6,.3,0,p.d/2+.15],[p.w+.6,.3,0,-p.d/2-.15],[.3,p.d,p.w/2+.15,0],[.3,p.d,-p.w/2-.15,0]].forEach(r=>{const b=new THREE.Mesh(new THREE.BoxGeometry(r[0],.45,r[1]),woodMat);b.position.set(p.x+r[2],.22,p.z+r[3]);scene.add(b);});
@@ -398,6 +412,7 @@ pools.forEach(p=>{
  for(let k=0;k<2;k++){const s=new THREE.Mesh(new THREE.PlaneGeometry(.09,1.1),wfMat);s.position.set(.78,.62,0);s.rotation.y=k*Math.PI/2;g.add(s);}
  scene.add(g);circles.push({x:E.x,z:E.z,r:.25,lv:0});spouts.push({x:E.x+(-u[0])*.78,z:E.z+(-u[1])*.78});
 });
+nxLoad('rotenburo.glb',()=>{const p=pools[0],n=Math.round(p.r*5.5);for(let k=0;k<n;k++){const a=k/n*Math.PI*2,rr=p.r+rnd(.15,.45),s=rnd(.45,.85);rock(p.x+Math.cos(a)*rr,s*.25,p.z+Math.sin(a)*rr,s*1.1,s*.6,s);}});
 // floating mandarins in 귤탕
 const juiceP=pools[4];const mandarins=[];
 const mandM=lam(0xff8a1c,{emissive:0x3a1400}),leafM=lam(0x3f8a2e);
