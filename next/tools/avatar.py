@@ -31,8 +31,8 @@ def parts(p):
     d = {}
     d['head'] = sd_ell(p, HEAD_C, (HEAD_R, HEAD_R*.96, HEAD_R*.98))
     d['neck'] = sd_cap(p, Vector((0, 0, .88)), Vector((0, 0, 1.0)), .12, .11)
-    d['torso'] = sd_ell(p, Vector((0, 0, .66)), (.32, .29, .35))
-    d['belly'] = sd_ell(p, Vector((0, -.06, .55)), (.27, .25, .22))
+    d['torso'] = sd_ell(p, Vector((0, 0, .67)), (.29, .245, .34))
+    d['belly'] = sd_ell(p, Vector((0, -.035, .56)), (.235, .21, .18))
     for s in (-1, 1):
         k = 'L' if s < 0 else 'R'
         d['leg'+k] = sd_cap(p, HIP[s] + Vector((0, 0, .04)), Vector((s*.12, 0, .085)), .105, .082)
@@ -58,7 +58,7 @@ try:
 except ImportError:
     marching_cubes = None
 step = .012
-xs = np.arange(-.58, .58+step, step); ys = np.arange(-.36, .36+step, step); zs = np.arange(-.02, 1.48+step, step)
+xs = np.arange(-.76, .76+step, step); ys = np.arange(-.36, .36+step, step); zs = np.arange(-.02, 1.48+step, step)
 vol = np.zeros((len(xs), len(ys), len(zs)), np.float32)
 for i, x in enumerate(xs):
     for j, y in enumerate(ys):
