@@ -1129,7 +1129,7 @@ try{const sv=JSON.parse(localStorage.getItem('morak-next-look')||localStorage.ge
 // 그래서 걷기·앉기·헤엄·탁구 같은 기존 동작 코드가 새 몸도 그대로 움직인다. 색은 8칸 팔레트(구역별) → 몸 그리기 1번.
 // 구역: 0 피부(머리·목·손·발) 1 윗몸 2 위팔 3 아래팔 4 골반 5 허벅지 6 정강이. ?v4 면 예전 몸.
 // 대상: 나·다른 손님(온라인)·키오스크 미리보기. 합쳐지는 가상 손님(guests)·걷는 NPC(walkers)는 예전 몸 그대로.
-NX.avs=[];NX.avGeo=null;NX.avBones=null;
+NX.avs=[];NX.avGeo=null;NX.avBones=null;const NX_BIND=.8;
 const NX_SLEEVE=[1,2,0,2,2,1,0,2,2,2],NX_LONGB=[1,0,1,1,1,1,1,0,1,0];  // 상의: 0 민소매 1 반팔 2 긴팔 / 하의: 1 긴 0 짧은
 const NX_OK={clothes:1,towel:1,jjim:1,kid:1};
 function nxZones(av){const sk=av.skin.color.getHex(),L=av.look||defLook(),o=av.outfit;
@@ -1150,9 +1150,9 @@ function nxUpgrade(av){if(av.nx||!NX.avGeo||guests.some(G=>G.a===av)||walkers.so
  const pal=new THREE.DataTexture(new Uint8Array(32),8,1,THREE.RGBAFormat);pal.magFilter=pal.minFilter=THREE.NearestFilter;
  const mat=new THREE.MeshLambertMaterial({map:pal,emissiveMap:pal,emissive:0x404040,skinning:true});
  const mesh=new THREE.SkinnedMesh(NX.avGeo,mat);mesh.frustumCulled=false;mesh.userData.dyn=1;av.g.add(mesh);
- // 쉬는 자세에서 묶기(팔은 바깥으로 .25)
+ // 묶는 자세: 팔을 NX_BIND만큼 벌린 모양으로 만든 몸(avatar.py 의 A 와 같아야 함)
  const keep=bones.map(b=>[b.position.clone(),b.rotation.clone()]);
- bones.forEach(b=>b.rotation.set(0,0,0));av.body.position.set(0,0,0);av.arms.forEach((a,i)=>a.rotation.z=(i?1:-1)*.25);
+ bones.forEach(b=>b.rotation.set(0,0,0));av.body.position.set(0,0,0);av.arms.forEach((a,i)=>a.rotation.z=(i?1:-1)*NX_BIND);
  av.g.updateMatrixWorld(true);mesh.bind(new THREE.Skeleton(bones));
  bones.forEach((b,i)=>{b.position.copy(keep[i][0]);b.rotation.copy(keep[i][1]);});
  av.nx={mesh,pal,old,hb,shins,soak:0,joy:0};nxPaint(av);}
@@ -1168,7 +1168,7 @@ function nxAnim(a,moving,dt){const X=a.nx;if(!X||!X.mesh.visible)return;const k=
  if(moving){const ph=a.phase;X.shins.forEach((s,i)=>s.rotation.x=Math.max(0,Math.sin(ph+(i?Math.PI:0)-.9))*.85);if(up){a.body.rotation.z=Math.sin(ph)*.05;a.body.rotation.y=Math.sin(ph)*.07;}}
  else{X.shins.forEach(s=>s.rotation.x+=(X.soak*1.25-s.rotation.x)*k);a.body.rotation.z*=.85;a.body.rotation.y*=.85;
   if(X.soak>.01)a.legs.forEach(l=>l.rotation.x=l.rotation.x*(1-X.soak)-1.15*X.soak);}
- a.arms.forEach((ar,i)=>{const s=i?1:-1;ar.rotation.z=s*(.25+(moving?0:.03*Math.sin(TT*1.6+i))+X.soak*.45+j*.3);if(j>0)ar.rotation.x=ar.rotation.x*(1-j)-2.75*j;});
+ a.arms.forEach((ar,i)=>{const s=i?1:-1;ar.rotation.z=s*(.3+(moving?0:.03*Math.sin(TT*1.6+i))+X.soak*.45+j*.3);if(j>0)ar.rotation.x=ar.rotation.x*(1-j)-2.75*j;});
  X.hb.rotation.x=-.28*j-.05*X.soak;X.hb.rotation.z=moving?0:Math.sin(TT*.7)*.04;
  if(j>0&&!moving)a.body.position.y=Math.abs(Math.sin((1.4-a.joy)*9))*.05*j;}
 {const _aw=animWalk;animWalk=function(a,moving,dt,speed){_aw(a,moving,dt,speed);nxAnim(a,moving,dt);};}

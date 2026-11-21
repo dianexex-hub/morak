@@ -9,7 +9,7 @@ from mathutils import Vector
 OUT = sys.argv[sys.argv.index('--')+1] if '--' in sys.argv else '/home/claude/out'
 bpy.ops.wm.read_factory_settings(use_empty=True)
 col = bpy.context.scene.collection
-A = .25                                   # 팔 벌림(라디안), 게임의 arms rotation.z 와 같음
+A = .8                                    # 묶는 자세의 팔 벌림(라디안). 게임 코드 NX_BIND 와 같아야 함
 HEAD_C, HEAD_R = Vector((0, 0, 1.15)), .275
 SH = {s: Vector((s*.34, 0, .84)) for s in (-1, 1)}
 ADIR = {s: Vector((s*math.sin(A), 0, -math.cos(A))) for s in (-1, 1)}
@@ -48,7 +48,7 @@ def field(p):
     for k in 'LR':
         leg = smin(d['leg'+k], d['foot'+k], .04)
         arm = smin(d['arm'+k], d['hand'+k], .03)
-        body = smin(body, leg, .06); body = smin(body, arm, .05)
+        body = smin(body, leg, .06); body = smin(body, arm, .025)
     return body
 
 # 격자에서 거리장을 표본 → 메타볼 대신 Blender의 "Remesh 없이" 마칭 큐브: 간단히 bmesh 로 만든 뒤 Blender remesh 로 정리
@@ -90,16 +90,17 @@ def sst(a, b, x):               # smoothstep (a→b)
 def arm_t(p, s):                # 어깨에서 팔 방향으로 얼마나 왔나(0 어깨, .34 손목쯤)
     return (p - SH[s]).dot(ADIR[s])
 ZONE = {}
-def zone_at(p):
+def zone_at(p, wa_=None):
     d = parts(p); near = min(d, key=d.get); s = -1 if p.x < 0 else 1
     if near in ('head', 'neck') or (p.z > .93 and abs(p.x) < .17): return 0
     if near.startswith('hand'): return 0
     if near.startswith('foot') or p.z < .09: return 0
-    if near.startswith('arm'):
+    if near.startswith('arm') or (wa_ is not None and wa_ > .5 and not near.startswith('hand')):
         t = arm_t(p, s); return 2 if t < .13 else (3 if t < .29 else (0 if t > .325 else 3))
     if near.startswith('leg'): return 5 if p.z > KNEE_Z else 6
     return 1 if p.z > .52 else 4                        # 0 피부(머리·목·손·발) 1 윗몸 2 위팔 3 아래팔 4 골반 5 허벅지 6 정강이
 weights = []
+ARMW = {}
 for v in me.vertices:
     p = v.co; d = parts(p); near = min(d, key=d.get)
     s = -1 if p.x < 0 else 1; k = 'L' if s < 0 else 'R'
@@ -115,10 +116,12 @@ for v in me.vertices:
     w = {'body': 1.0}
     wh = sst(.95, 1.04, p.z)
     if wh > 0: w['head'] = wh
-    if p.z > .5 and abs(p.x) > .2:
-        wa = sst(-.02, .07, arm_t(p, s)) * sst(.22, .29, abs(p.x))
-        if near.startswith(('arm', 'hand')): wa = max(wa, sst(-.02, .04, arm_t(p, s)))
-        if wa > 0: w['arm'+k] = wa
+    t_ = arm_t(p, s)
+    if near.startswith(('arm', 'hand')): wa = sst(-.04, .05, t_)
+    elif (p - SH[s]).length < .13: wa = sst(-.02, .06, t_) * .6
+    else: wa = 0
+    if wa > 0: w['arm'+k] = wa
+    ARMW[v.index] = wa
     if p.z < .5:
         wl = sst(.47, .33, p.z) * sst(.0, .05, abs(p.x))
         if wl > 0:
@@ -131,7 +134,7 @@ for v in me.vertices:
 
 uv = me.uv_layers.new(name='UVMap')
 for poly in me.polygons:
-    z = zone_at(Vector(poly.center))
+    z = zone_at(Vector(poly.center), sum(ARMW[vi] for vi in poly.vertices)/len(poly.vertices))
     for li in poly.loop_indices: uv.data[li].uv = ((z+.5)/8, .5)
 
 # ---------- 뼈대 ----------
