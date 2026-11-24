@@ -343,6 +343,7 @@ const grassMat=lam(0x1d2a1f);
 const BBX0=-24,BBX1=24,BBZ0=28,BBZ1=52; // basement extents
 [[-700,700,-700,27.7],[-700,700,44,700],[-700,-12,27.7,44],[12,700,27.7,44]].forEach(r=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(r[1]-r[0],r[3]-r[2]),grassMat);m.rotation.x=-Math.PI/2;m.position.set((r[0]+r[1])/2,-.03,(r[2]+r[3])/2);scene.add(m);});
 
+// >>> src/nx-load.js (build.py가 끼워 넣음 — 여기 말고 src/nx-load.js를 고칠 것)
 // ===== 모락 NEXT: Blender 모형 =====
 // ?v4 를 붙이면 예전(코드) 모습으로 비교. 불러오기에 실패하면 예전 모습으로 돌아감.
 const NX={old:/[?&]v4\b/.test(location.search)||!THREE.GLTFLoader,loaded:[]};
@@ -356,6 +357,7 @@ function nxLoad(file,onFail){
   g.add(gl.scene);scene.add(g);NX.loaded.push(file);
  },undefined,e=>{console.warn('NEXT 모형 불러오기 실패',file,e);onFail&&onFail();});
 }
+// <<< src/nx-load.js
 // ================= pools =================
 const pools=[
  {name:'노천탕',temp:'40℃',type:'circle',x:0,z:-7,r:7,desc:'하늘이 지붕인 큰 탕',deep:0x1f5c5e,shallow:0x5fa8a0,sp:-2.2},
@@ -1124,6 +1126,7 @@ const PAL=[0xffe0b8,0xb7e4c7,0xcdb4db,0xffd6a5,0xa2d2ff,0xffc8dd,0xd8e2a8,0xf7c5
 let myColor=PAL[(Math.random()*PAL.length)|0];try{const c=parseInt(localStorage.getItem('morak-next-color'));if(PAL.includes(c))myColor=c;else localStorage.setItem('morak-next-color',myColor);}catch(_){}
 let myLook=Object.assign(defLook(),{sk:myColor}),hadSavedLook=false;
 try{const sv=JSON.parse(localStorage.getItem('morak-next-look')||localStorage.getItem('morak-look')||'null');if(sv&&typeof sv==='object'&&isCol(sv.sk)){const arr=packLook(Object.assign(defLook(),sv));if(validL(arr)){myLook=unpackLook(arr,sv.sk,sv.n);myColor=myLook.sk;hadSavedLook=!!myLook.n;}}}catch(_){}
+// >>> src/nx-avatar.js (build.py가 끼워 넣음 — 여기 말고 src/nx-avatar.js를 고칠 것)
 // ===== 모락 NEXT: 한 덩어리 아바타 =====
 // assets/avatar.glb(Blender) 의 몸 하나를 기존 legs/arms 묶음에 그대로 입힌다(묶음이 곧 뼈).
 // 그래서 걷기·앉기·헤엄·탁구 같은 기존 동작 코드가 새 몸도 그대로 움직인다. 색은 8칸 팔레트(구역별) → 몸 그리기 1번.
@@ -1172,6 +1175,7 @@ function nxAnim(a,moving,dt){const X=a.nx;if(!X||!X.mesh.visible)return;const k=
  X.hb.rotation.x=-.28*j-.05*X.soak;X.hb.rotation.z=moving?0:Math.sin(TT*.7)*.04;
  if(j>0&&!moving)a.body.position.y=Math.abs(Math.sin((1.4-a.joy)*9))*.05*j;}
 {const _aw=animWalk;animWalk=function(a,moving,dt,speed){_aw(a,moving,dt,speed);nxAnim(a,moving,dt);};}
+// <<< src/nx-avatar.js
 const me=buildAvatar(myColor,'clothes','mine',myLook);
 const pops=[];
 const bubbleTexCache={};
