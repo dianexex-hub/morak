@@ -420,35 +420,61 @@ const wf=pools[1];const wfPos=new THREE.Vector3(wf.x,1.8,wf.z-wf.r-.1);
 circles.push({x:wf.x,z:wfPos.z-2.2,r:3.4,lv:0});
 plane(2,3.8,wfMat,wfPos.x,1.95,wfPos.z+.15);
 
-// ================= 📺 전자 게시판 (폭포탕 옆) =================
-// 서 있는 디지털 사이니지. 저장소에 banner.png를 올리면 그 그림만 화면에 띄운다(화면 전환 없음).
-// 비율은 그림을 따라 자동(가로 최대 3.4, 세로 최대 2.4). 휴대폰 세로 화면용 권장 4:3(예 1600×1200). 없으면 임시 화면(4:3).
-const BANNER={x:-10.6,z:-21.2,ry:.66,w:3.2,h:2.4,MAXW:3.4,MAXH:2.4,BOT:.9};
+// ================= 📺 전자 게시판 (디스플레이 여러 대) =================
+// 저장소에 banner.png를 올리면 그 그림 한 장을 모든 「게시물」 화면에 띄운다(화면 전환 없음). 비율은 그림 따라 자동.
+// 휴대폰 세로 화면용 권장 4:3(예 1600×1200). 없으면 임시 화면(4:3). 광고 화면(오송희 귤&에너지)은 따로 그린 그림.
+// 종류: stand(다리 달린 입간판) · wall(벽·울타리에 붙임) · pole(기둥 하나에 올린 대형 전광판). DISPLAYS 목록에서 자리·크기를 고친다.
 const bannerTmp=canvasTex(1200,900,(g,w,h)=>{const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#1d3b45');gr.addColorStop(1,'#0e1e26');g.fillStyle=gr;g.fillRect(0,0,w,h);
  g.textAlign='center';g.fillStyle='#ffb04a';g.font='bold 160px sans-serif';g.fillText('♨ 모락',w/2,340);
  g.fillStyle='#f6efe0';g.font='bold 76px sans-serif';g.fillText('가상온천 모락에',w/2,500);g.fillText('어서 오세요',w/2,600);
  g.fillStyle='#7fa9b5';g.font='42px sans-serif';g.fillText('· 게시물 준비 중 ·',w/2,750);});
 const bannerMat=new THREE.MeshBasicMaterial({map:bannerTmp}); // 조명과 상관없이 밝게 = 화면
+const osongTex=canvasTex(1200,900,(g,w,h)=>{
+ const gr=g.createLinearGradient(0,0,w,h);gr.addColorStop(0,'#ff9a2e');gr.addColorStop(1,'#ff6a1a');g.fillStyle=gr;g.fillRect(0,0,w,h);
+ g.fillStyle='rgba(255,255,255,.12)';for(let k=0;k<9;k++){g.beginPath();g.arc(rnd(0,w),rnd(0,h),rnd(40,140),0,7);g.fill();}
+ // 귤 + 번개
+ const cx=330,cy=430;g.fillStyle='#ffb23a';g.strokeStyle='#c8541a';g.lineWidth=10;g.beginPath();g.arc(cx,cy,190,0,7);g.fill();g.stroke();
+ g.fillStyle='rgba(255,255,255,.35)';g.beginPath();g.ellipse(cx-70,cy-80,50,30,-.6,0,7);g.fill();
+ g.fillStyle='#3f8a2e';g.beginPath();g.ellipse(cx+40,cy-200,70,28,-.5,0,7);g.fill();g.fillStyle='#5a3a1a';g.fillRect(cx-6,cy-215,12,40);
+ g.fillStyle='#fff45a';g.strokeStyle='#7a3a00';g.lineWidth=8;g.beginPath();[[cx+20,cy-110],[cx-60,cy+20],[cx-5,cy+20],[cx-40,cy+130],[cx+70,cy-20],[cx+10,cy-20],[cx+50,cy-110]].forEach(([x,y],n)=>n?g.lineTo(x,y):g.moveTo(x,y));g.closePath();g.fill();g.stroke();
+ g.textAlign='left';g.fillStyle='#fff';g.font='bold 92px sans-serif';g.fillText('오송희',580,250);
+ g.font='bold 74px sans-serif';g.fillText('귤&에너지',580,350);g.font='bold 58px sans-serif';g.fillText('주식회사',580,430);
+ g.fillStyle='#5a2400';g.font='bold 54px sans-serif';g.fillText('귤 까서 충전 완료 ⚡',580,560);
+ g.fillStyle='rgba(90,36,0,.85)';g.font='34px sans-serif';g.fillText('제주 노지감귤 100%',580,640);g.fillText('껍질까지 남김없이 에너지로',580,690);
+ g.fillStyle='#5a2400';g.fillRect(0,h-90,w,90);g.fillStyle='#ffd27a';g.font='bold 38px sans-serif';g.textAlign='center';g.fillText('OSONGHEE MANDARIN & ENERGY CO., LTD.  ·  상큼하게, 힘차게',w/2,h-32);});
+const osongMat=new THREE.MeshBasicMaterial({map:osongTex});
 const bezelMat=lam(0x1a1c20),standMat=lam(0x2c2f35);
-const bannerG=new THREE.Group(),bannerCol=[0,1,2].map(()=>({x:0,z:0,r:.32,lv:0}));circles.push(...bannerCol);
-bannerG.position.set(BANNER.x,0,BANNER.z);bannerG.rotation.y=BANNER.ry;scene.add(bannerG);
-function buildBanner(aspect){const B=BANNER;
- for(let n=bannerG.children.length-1;n>=0;n--){const c=bannerG.children[n];bannerG.remove(c);if(c.geometry)c.geometry.dispose();}
- B.w=B.MAXW;B.h=B.w/aspect;if(B.h>B.MAXH){B.h=B.MAXH;B.w=B.h*aspect;}
- const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);bannerG.add(m);return m;};
- const bz=.09,cy=B.BOT+B.h/2,FW=B.w+bz*2,FH=B.h+bz*2,legX=Math.max(B.w/2-.45,.35);
- add(new THREE.BoxGeometry(FW,FH,.14),bezelMat,0,cy,-.02);                     // 화면 테두리·몸체
- add(new THREE.BoxGeometry(FW-.1,FH-.1,.08),standMat,0,cy,-.12);               // 뒷판
- add(new THREE.PlaneGeometry(B.w,B.h),bannerMat,0,cy,.052);                    // 화면
- add(new THREE.BoxGeometry(Math.min(.9,B.w*.4),.05,.03),standMat,0,B.BOT-bz-.03,.04); // 아래 로고 띠
- add(new THREE.SphereGeometry(.018,6,4),new THREE.MeshBasicMaterial({color:0x5dff8a}),FW/2-.14,B.BOT-bz/2,.06);
- [-legX,legX].forEach(x=>{add(new THREE.BoxGeometry(.12,B.BOT,.12),standMat,x,B.BOT/2,-.06);
-  add(new THREE.BoxGeometry(.22,.06,.9),standMat,x,.03,-.06);});               // 다리 + 받침
- add(new THREE.BoxGeometry(legX*2,.08,.06),standMat,0,.35,-.06);              // 다리 사이 가로대
- [-legX,0,legX].forEach((x,n)=>{bannerCol[n].x=B.x+Math.cos(B.ry)*x;bannerCol[n].z=B.z-Math.sin(B.ry)*x;});}
-buildBanner(4/3);
+const DISPLAYS=[
+ {kind:'stand',x:-10.6,z:-21.2,ry:.66,MAXW:3.4,MAXH:2.4,BOT:.9},              // 1층 폭포탕 옆 입간판
+ {kind:'pole',x:21,z:-63,ry:-.37,MAXW:15,MAXH:11.25,BOT:7},                        // 큰 폭포 옆 대형 전광판 (담장 너머)
+ {kind:'wall',x:-14,z:-33.82,ry:0,MAXW:2.6,MAXH:1.75,BOT:.7},                  // 북쪽 울타리
+ {kind:'wall',x:33.82,z:-19,ry:-Math.PI/2,MAXW:2.6,MAXH:1.75,BOT:.7,ad:1},     // 동쪽 울타리 · 귤탕 옆 · 오송희 광고
+ {kind:'stand',x:-13,z:7,ry:2.2,MAXW:2.4,MAXH:1.8,BOT:.8},                     // 서쪽 마당 작은 입간판
+ {kind:'wall',x:11.84,z:36,ry:-Math.PI/2,MAXW:2.6,MAXH:1.9,BOT:1.5},           // 건물 로비 벽걸이
+];
+function buildDisplay(D,aspect){
+ const G=D.g||(D.g=new THREE.Group());if(!G.parent){G.position.set(D.x,D.y||0,D.z);G.rotation.y=D.ry;scene.add(G);}
+ for(let n=G.children.length-1;n>=0;n--){const c=G.children[n];G.remove(c);if(c.geometry)c.geometry.dispose();}
+ let w=D.MAXW,h=w/aspect;if(h>D.MAXH){h=D.MAXH;w=h*aspect;}
+ const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);G.add(m);return m;};
+ const big=D.kind==='pole',bz=big?.28:.09,dep=big?.9:D.kind==='wall'?.1:.14,cy=D.BOT+h/2,FW=w+bz*2,FH=h+bz*2;
+ const fz=D.kind==='wall'?dep:.05; // 화면 앞면 z
+ add(new THREE.BoxGeometry(FW,FH,dep),bezelMat,0,cy,fz-dep/2);
+ add(new THREE.PlaneGeometry(w,h),D.ad?osongMat:bannerMat,0,cy,fz+.003);
+ add(new THREE.SphereGeometry(big?.08:.018,6,4),new THREE.MeshBasicMaterial({color:0x5dff8a}),FW/2-bz*1.5,D.BOT-bz/2,fz+.01);
+ const col=[];
+ if(D.kind==='stand'){const legX=Math.max(w/2-.45,.35);
+  add(new THREE.BoxGeometry(FW-.1,FH-.1,.08),standMat,0,cy,-.12);
+  [-legX,legX].forEach(x=>{add(new THREE.BoxGeometry(.12,D.BOT,.12),standMat,x,D.BOT/2,-.06);add(new THREE.BoxGeometry(.22,.06,.9),standMat,x,.03,-.06);});
+  add(new THREE.BoxGeometry(legX*2,.08,.06),standMat,0,.35,-.06);col.push(-legX,0,legX);}
+ if(D.kind==='wall'){add(new THREE.BoxGeometry(Math.min(.9,w*.4),.05,.03),standMat,0,D.BOT-bz-.03,fz-.02);}
+ if(D.kind==='pole'){add(new THREE.BoxGeometry(1,D.BOT+.5,1),standMat,0,(D.BOT+.5)/2,-dep/2);add(new THREE.BoxGeometry(2.4,.5,2.4),rockMat,0,.25,-dep/2);
+  add(new THREE.BoxGeometry(FW*.7,.3,.5),standMat,0,D.BOT-bz-.15,-dep/2);col.push(0);}
+ if(!D.cols){D.cols=col.map(()=>({x:0,z:0,r:big?.9:.32,lv:0}));circles.push(...D.cols);}
+ col.forEach((x,n)=>{const c=D.cols[n];if(!c)return;c.x=D.x+Math.cos(D.ry)*x;c.z=D.z-Math.sin(D.ry)*x;});}
+DISPLAYS.forEach(D=>buildDisplay(D,4/3));
 new THREE.TextureLoader().load('./banner.png?v='+VERSION,tx=>{tx.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());bannerMat.map=tx;bannerMat.needsUpdate=true;
- const im=tx.image;if(im&&im.width&&im.height)buildBanner(im.width/im.height);},undefined,()=>{});
+ const im=tx.image;if(im&&im.width&&im.height)DISPLAYS.forEach(D=>{if(!D.ad)buildDisplay(D,im.width/im.height);});},undefined,()=>{});
 
 // ================= big outdoor waterfall =================
 const BIG=new THREE.Vector3(6,0,-76);
