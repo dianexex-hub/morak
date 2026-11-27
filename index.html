@@ -421,30 +421,35 @@ circles.push({x:wf.x,z:wfPos.z-2.2,r:3.4,lv:0});
 plane(2,3.8,wfMat,wfPos.x,1.95,wfPos.z+.15);
 
 // ================= 🎌 현수막 게시대 (폭포탕 옆) =================
-// 현수막 그림: 저장소에 banner.png(가로:세로 = 12:5, 예 1920×800)를 올리면 그걸 건다. 없으면 임시 현수막.
-const BANNER={x:-10.6,z:-21.2,ry:.66,w:3.6,h:1.5,t:0};
-const bannerTmp=canvasTex(1200,500,(g,w,h)=>{g.fillStyle='#f6efe0';g.fillRect(0,0,w,h);
- g.strokeStyle='#b8432f';g.lineWidth=14;g.strokeRect(22,22,w-44,h-44);g.lineWidth=3;g.strokeRect(44,44,w-88,h-88);
- g.textAlign='center';g.fillStyle='#b8432f';g.font='bold 120px sans-serif';g.fillText('♨ 가상온천 모락',w/2,225);
- g.fillStyle='#4a3020';g.font='54px sans-serif';g.fillText('오늘도 뜨듯하게 쉬다 가세요',w/2,330);
- g.fillStyle='#8a7a66';g.font='34px sans-serif';g.fillText('· 현수막 걸 자리 ·',w/2,410);});
+// 현수막 그림: 저장소에 banner.png를 올리면 그걸 건다. 비율은 그림을 따라 자동(가로 최대 3.6, 세로 최대 2.4).
+// 휴대폰(세로 화면)에서 잘 보이는 권장 비율은 4:3 (예 1600×1200). 없으면 임시 현수막(4:3).
+const BANNER={x:-10.6,z:-21.2,ry:.66,w:3.2,h:2.4,t:0,MAXW:3.6,MAXH:2.4,BOT:.65};
+const bannerTmp=canvasTex(1200,900,(g,w,h)=>{g.fillStyle='#f6efe0';g.fillRect(0,0,w,h);
+ g.strokeStyle='#b8432f';g.lineWidth=16;g.strokeRect(26,26,w-52,h-52);g.lineWidth=4;g.strokeRect(52,52,w-104,h-104);
+ g.textAlign='center';g.fillStyle='#b8432f';g.font='bold 150px sans-serif';g.fillText('♨ 모락',w/2,330);
+ g.fillStyle='#4a3020';g.font='bold 76px sans-serif';g.fillText('가상온천 모락에',w/2,490);g.fillText('어서 오세요',w/2,590);
+ g.fillStyle='#8a7a66';g.font='44px sans-serif';g.fillText('· 현수막 걸 자리 ·',w/2,740);});
 const bannerMat=lam(0xffffff,{map:bannerTmp,side:THREE.DoubleSide});
-new THREE.TextureLoader().load('./banner.png?v='+VERSION,tx=>{tx.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());bannerMat.map=tx;bannerMat.needsUpdate=true;},undefined,()=>{});
-const bannerG=new THREE.Group();{
- const B=BANNER,hw=B.w/2+.35,top=3.1,ropeMat=lam(0xd8cfb8);
+const bannerG=new THREE.Group(),bannerCol=[{x:0,z:0,r:.3,lv:0},{x:0,z:0,r:.3,lv:0}];circles.push(...bannerCol);
+bannerG.position.set(BANNER.x,0,BANNER.z);bannerG.rotation.y=BANNER.ry;scene.add(bannerG);
+function buildBanner(aspect){const B=BANNER;
+ while(bannerG.children.length){const c=bannerG.children.pop();if(c.geometry)c.geometry.dispose();}
+ B.w=B.MAXW;B.h=B.w/aspect;if(B.h>B.MAXH){B.h=B.MAXH;B.w=B.h*aspect;}
+ const hw=Math.max(B.w/2+.35,.9),cy=B.BOT+B.h/2,top=cy+B.h/2+.12,ropeMat=bannerG.userData.rope||(bannerG.userData.rope=lam(0xd8cfb8));
  [-hw,hw].forEach(x=>{const post=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,top+.15,8),darkWood);post.position.set(x,(top+.15)/2,0);bannerG.add(post);
   const cap=new THREE.Mesh(new THREE.SphereGeometry(.13,8,6),darkWood);cap.position.set(x,top+.2,0);bannerG.add(cap);
   const foot=new THREE.Mesh(new THREE.CylinderGeometry(.22,.26,.18,8),rockMat);foot.position.set(x,.09,0);bannerG.add(foot);});
  const bar=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,hw*2,6),darkWood);bar.rotation.z=Math.PI/2;bar.position.y=top;bannerG.add(bar);
- const cy=top-.12-B.h/2;
- const geo=new THREE.PlaneGeometry(B.w,B.h,18,4);B.geo=geo;B.base=Float32Array.from(geo.attributes.position.array);
+ const geo=new THREE.PlaneGeometry(B.w,B.h,18,6);B.geo=geo;B.base=Float32Array.from(geo.attributes.position.array);
  const cloth=new THREE.Mesh(geo,bannerMat);cloth.position.y=cy;bannerG.add(cloth);
- // 네 귀퉁이 끈
- [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(([sx,sy])=>{const x0=sx*B.w/2,y0=cy+sy*B.h/2,x1=sx*hw,y1=sy>0?top:cy-B.h/2-.05;
-  const L=Math.hypot(x1-x0,y1-y0),r=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,L,4),ropeMat);
+ // 네 귀퉁이 끈 (위는 가로대, 아래는 기둥)
+ [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(([sx,sy])=>{const x0=sx*B.w/2,y0=cy+sy*B.h/2,x1=sx*hw,y1=sy>0?top:y0-.05;
+  const L=Math.hypot(x1-x0,y1-y0);if(L<.02)return;const r=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,L,4),ropeMat);
   r.position.set((x0+x1)/2,(y0+y1)/2,0);r.rotation.z=Math.atan2(-(x1-x0),y1-y0);bannerG.add(r);});
- bannerG.position.set(B.x,0,B.z);bannerG.rotation.y=B.ry;scene.add(bannerG);
- [-hw,hw].forEach(x=>circles.push({x:B.x+Math.cos(B.ry)*x,z:B.z-Math.sin(B.ry)*x,r:.3,lv:0}));}
+ [-hw,hw].forEach((x,k)=>{bannerCol[k].x=B.x+Math.cos(B.ry)*x;bannerCol[k].z=B.z-Math.sin(B.ry)*x;});}
+buildBanner(4/3);
+new THREE.TextureLoader().load('./banner.png?v='+VERSION,tx=>{tx.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());bannerMat.map=tx;bannerMat.needsUpdate=true;
+ const im=tx.image;if(im&&im.width&&im.height)buildBanner(im.width/im.height);},undefined,()=>{});
 function bannerFrame(dt){const B=BANNER;if(level!==0||Math.hypot(pos.x-B.x,pos.z-B.z)>45)return;B.t+=dt;
  const a=B.geo.attributes.position,o=B.base,hw=B.w/2;
  for(let i=0;i<a.count;i++){const x=o[i*3],y=o[i*3+1],edge=1-Math.pow(Math.abs(x)/hw,2);
