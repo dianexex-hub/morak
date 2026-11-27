@@ -420,41 +420,35 @@ const wf=pools[1];const wfPos=new THREE.Vector3(wf.x,1.8,wf.z-wf.r-.1);
 circles.push({x:wf.x,z:wfPos.z-2.2,r:3.4,lv:0});
 plane(2,3.8,wfMat,wfPos.x,1.95,wfPos.z+.15);
 
-// ================= 🎌 현수막 게시대 (폭포탕 옆) =================
-// 현수막 그림: 저장소에 banner.png를 올리면 그걸 건다. 비율은 그림을 따라 자동(가로 최대 3.6, 세로 최대 2.4).
-// 휴대폰(세로 화면)에서 잘 보이는 권장 비율은 4:3 (예 1600×1200). 없으면 임시 현수막(4:3).
-const BANNER={x:-10.6,z:-21.2,ry:.66,w:3.2,h:2.4,t:0,MAXW:3.6,MAXH:2.4,BOT:.65};
-const bannerTmp=canvasTex(1200,900,(g,w,h)=>{g.fillStyle='#f6efe0';g.fillRect(0,0,w,h);
- g.strokeStyle='#b8432f';g.lineWidth=16;g.strokeRect(26,26,w-52,h-52);g.lineWidth=4;g.strokeRect(52,52,w-104,h-104);
- g.textAlign='center';g.fillStyle='#b8432f';g.font='bold 150px sans-serif';g.fillText('♨ 모락',w/2,330);
- g.fillStyle='#4a3020';g.font='bold 76px sans-serif';g.fillText('가상온천 모락에',w/2,490);g.fillText('어서 오세요',w/2,590);
- g.fillStyle='#8a7a66';g.font='44px sans-serif';g.fillText('· 현수막 걸 자리 ·',w/2,740);});
-const bannerMat=lam(0xffffff,{map:bannerTmp,side:THREE.DoubleSide});
-const bannerG=new THREE.Group(),bannerCol=[{x:0,z:0,r:.3,lv:0},{x:0,z:0,r:.3,lv:0}];circles.push(...bannerCol);
+// ================= 📺 전자 게시판 (폭포탕 옆) =================
+// 서 있는 디지털 사이니지. 저장소에 banner.png를 올리면 그 그림만 화면에 띄운다(화면 전환 없음).
+// 비율은 그림을 따라 자동(가로 최대 3.4, 세로 최대 2.4). 휴대폰 세로 화면용 권장 4:3(예 1600×1200). 없으면 임시 화면(4:3).
+const BANNER={x:-10.6,z:-21.2,ry:.66,w:3.2,h:2.4,MAXW:3.4,MAXH:2.4,BOT:.9};
+const bannerTmp=canvasTex(1200,900,(g,w,h)=>{const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#1d3b45');gr.addColorStop(1,'#0e1e26');g.fillStyle=gr;g.fillRect(0,0,w,h);
+ g.textAlign='center';g.fillStyle='#ffb04a';g.font='bold 160px sans-serif';g.fillText('♨ 모락',w/2,340);
+ g.fillStyle='#f6efe0';g.font='bold 76px sans-serif';g.fillText('가상온천 모락에',w/2,500);g.fillText('어서 오세요',w/2,600);
+ g.fillStyle='#7fa9b5';g.font='42px sans-serif';g.fillText('· 게시물 준비 중 ·',w/2,750);});
+const bannerMat=new THREE.MeshBasicMaterial({map:bannerTmp}); // 조명과 상관없이 밝게 = 화면
+const bezelMat=lam(0x1a1c20),standMat=lam(0x2c2f35);
+const bannerG=new THREE.Group(),bannerCol=[0,1,2].map(()=>({x:0,z:0,r:.32,lv:0}));circles.push(...bannerCol);
 bannerG.position.set(BANNER.x,0,BANNER.z);bannerG.rotation.y=BANNER.ry;scene.add(bannerG);
 function buildBanner(aspect){const B=BANNER;
- while(bannerG.children.length){const c=bannerG.children.pop();if(c.geometry)c.geometry.dispose();}
+ for(let n=bannerG.children.length-1;n>=0;n--){const c=bannerG.children[n];bannerG.remove(c);if(c.geometry)c.geometry.dispose();}
  B.w=B.MAXW;B.h=B.w/aspect;if(B.h>B.MAXH){B.h=B.MAXH;B.w=B.h*aspect;}
- const hw=Math.max(B.w/2+.35,.9),cy=B.BOT+B.h/2,top=cy+B.h/2+.12,ropeMat=bannerG.userData.rope||(bannerG.userData.rope=lam(0xd8cfb8));
- [-hw,hw].forEach(x=>{const post=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,top+.15,8),darkWood);post.position.set(x,(top+.15)/2,0);bannerG.add(post);
-  const cap=new THREE.Mesh(new THREE.SphereGeometry(.13,8,6),darkWood);cap.position.set(x,top+.2,0);bannerG.add(cap);
-  const foot=new THREE.Mesh(new THREE.CylinderGeometry(.22,.26,.18,8),rockMat);foot.position.set(x,.09,0);bannerG.add(foot);});
- const bar=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,hw*2,6),darkWood);bar.rotation.z=Math.PI/2;bar.position.y=top;bannerG.add(bar);
- const geo=new THREE.PlaneGeometry(B.w,B.h,18,6);B.geo=geo;B.base=Float32Array.from(geo.attributes.position.array);
- const cloth=new THREE.Mesh(geo,bannerMat);cloth.position.y=cy;bannerG.add(cloth);
- // 네 귀퉁이 끈 (위는 가로대, 아래는 기둥)
- [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(([sx,sy])=>{const x0=sx*B.w/2,y0=cy+sy*B.h/2,x1=sx*hw,y1=sy>0?top:y0-.05;
-  const L=Math.hypot(x1-x0,y1-y0);if(L<.02)return;const r=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,L,4),ropeMat);
-  r.position.set((x0+x1)/2,(y0+y1)/2,0);r.rotation.z=Math.atan2(-(x1-x0),y1-y0);bannerG.add(r);});
- [-hw,hw].forEach((x,k)=>{bannerCol[k].x=B.x+Math.cos(B.ry)*x;bannerCol[k].z=B.z-Math.sin(B.ry)*x;});}
+ const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);bannerG.add(m);return m;};
+ const bz=.09,cy=B.BOT+B.h/2,FW=B.w+bz*2,FH=B.h+bz*2,legX=Math.max(B.w/2-.45,.35);
+ add(new THREE.BoxGeometry(FW,FH,.14),bezelMat,0,cy,-.02);                     // 화면 테두리·몸체
+ add(new THREE.BoxGeometry(FW-.1,FH-.1,.08),standMat,0,cy,-.12);               // 뒷판
+ add(new THREE.PlaneGeometry(B.w,B.h),bannerMat,0,cy,.052);                    // 화면
+ add(new THREE.BoxGeometry(Math.min(.9,B.w*.4),.05,.03),standMat,0,B.BOT-bz-.03,.04); // 아래 로고 띠
+ add(new THREE.SphereGeometry(.018,6,4),new THREE.MeshBasicMaterial({color:0x5dff8a}),FW/2-.14,B.BOT-bz/2,.06);
+ [-legX,legX].forEach(x=>{add(new THREE.BoxGeometry(.12,B.BOT,.12),standMat,x,B.BOT/2,-.06);
+  add(new THREE.BoxGeometry(.22,.06,.9),standMat,x,.03,-.06);});               // 다리 + 받침
+ add(new THREE.BoxGeometry(legX*2,.08,.06),standMat,0,.35,-.06);              // 다리 사이 가로대
+ [-legX,0,legX].forEach((x,n)=>{bannerCol[n].x=B.x+Math.cos(B.ry)*x;bannerCol[n].z=B.z-Math.sin(B.ry)*x;});}
 buildBanner(4/3);
 new THREE.TextureLoader().load('./banner.png?v='+VERSION,tx=>{tx.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());bannerMat.map=tx;bannerMat.needsUpdate=true;
  const im=tx.image;if(im&&im.width&&im.height)buildBanner(im.width/im.height);},undefined,()=>{});
-function bannerFrame(dt){const B=BANNER;if(level!==0||Math.hypot(pos.x-B.x,pos.z-B.z)>45)return;B.t+=dt;
- const a=B.geo.attributes.position,o=B.base,hw=B.w/2;
- for(let i=0;i<a.count;i++){const x=o[i*3],y=o[i*3+1],edge=1-Math.pow(Math.abs(x)/hw,2);
-  a.array[i*3+2]=edge*(.05+.025*(.5-y/B.h))*Math.sin(B.t*1.6+x*1.7+y*.6);}
- a.needsUpdate=true;}
 
 // ================= big outdoor waterfall =================
 const BIG=new THREE.Vector3(6,0,-76);
@@ -2639,7 +2633,7 @@ function frame(now){
  for(let k=0;k<14;k++){const i=(Math.random()*BN)|0;const [x,z]=randInPool(tp);bPos[i*3]=x;bPos[i*3+2]=z;}
  for(let i=0;i<BN;i++)bPos[i*3+1]=.07+Math.abs(Math.sin(TT*6+i))*.03;
  bGeo.attributes.position.needsUpdate=true;
- updMandarins(dt);farmFrame(dt,now);roamFrame(dt);nbFrame(dt);rpFrame(dt);v4Frame(dt);bannerFrame(dt);if(peelOpen)peelTick(dt);
+ updMandarins(dt);farmFrame(dt,now);roamFrame(dt);nbFrame(dt);rpFrame(dt);v4Frame(dt);if(peelOpen)peelTick(dt);
  fans.forEach(f=>{f.blades.rotation.z-=dt*22;f.head.rotation.y=Math.sin(TT*.5+f.ph)*.8;});
  chimes.forEach((c,i)=>{c.rotation.z=Math.sin(TT*1.3+i)*.08;c.rotation.x=Math.sin(TT*.9+i*2)*.05;});
  snow.visible=snowOn&&(outdoor||level===2);
